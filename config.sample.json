@@ -1,0 +1,8 @@
+{
+  "bot_token": "YOUR_BOT_TOKEN_HERE",
+  "owner_id": 123456789,
+  "admins": [],
+  "approved_users": [],
+  "proxies": [],
+  "logger_chat_id": null
+}
