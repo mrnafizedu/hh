@@ -354,18 +354,24 @@ async def _hit_job(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             result_lines.append(line)
 
-            # send screenshot to logger group
-            if res.get("screenshot"):
-                logger_id = CFG.get("logger_chat_id")
-                if logger_id:
-                    cap = (f"🔴 <b>DECLINED</b>\n💳 <code>{cdisp}</code>\n"
-                           f"📉 {code}  ⏱ {res['response_time']:.1f}s")
-                    await _send_screenshot(app, logger_id, res["screenshot"], cap)
-                else:
-                    # delete if no logger
+            ss_path = res.get("screenshot")
+            if ss_path and os.path.exists(ss_path):
+                cap = (f"🔴 <b>DECLINED</b>\n"
+                       f"💳 <code>{cdisp}</code>\n"
+                       f"🏢 {merchant}  💰 {amount}\n"
+                       f"📉 {code}  ⏱ {res['response_time']:.1f}s")
+                # send to hitting chat
+                await _send_screenshot(app, chat_id, ss_path, cap)
+                # send to logger group (file already deleted above, so use text only)
+            elif not ss_path:
+                pass
+
+            # clean up any leftover file
+            for f_path in (ss_path, res.get("screenshot_before")):
+                if f_path:
                     try:
-                        if res["screenshot"] and os.path.exists(res["screenshot"]):
-                            os.remove(res["screenshot"])
+                        if os.path.exists(f_path):
+                            os.remove(f_path)
                     except Exception:
                         pass
 

@@ -41,18 +41,57 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
 ]
 
-DEFAULT_BILLING = {
-    "first_name": "John",
-    "last_name":  "Smith",
-    "name":       "John Smith",
-    "email":      "test@gmail.com",
-    "address":    "123 Main Street",
-    "city":       "New York",
-    "state":      "NY",
-    "zip":        "10001",
-    "country":    "US",
-    "phone":      "2125551234",
-}
+# ── Address pool (rotated per hit) ───────────────────────────────────────────
+ADDRESS_POOL = [
+    # US addresses
+    {"first_name":"James","last_name":"Wilson","name":"James Wilson",
+     "address":"742 Evergreen Terrace","city":"Springfield","state":"IL",
+     "zip":"62701","country":"US","country_name":"United States","phone":"2175550142"},
+    {"first_name":"Emily","last_name":"Johnson","name":"Emily Johnson",
+     "address":"1600 Pennsylvania Ave NW","city":"Washington","state":"DC",
+     "zip":"20500","country":"US","country_name":"United States","phone":"2025550100"},
+    {"first_name":"Michael","last_name":"Brown","name":"Michael Brown",
+     "address":"350 Fifth Avenue","city":"New York","state":"NY",
+     "zip":"10118","country":"US","country_name":"United States","phone":"2125550199"},
+    {"first_name":"Sarah","last_name":"Davis","name":"Sarah Davis",
+     "address":"1 Infinite Loop","city":"Cupertino","state":"CA",
+     "zip":"95014","country":"US","country_name":"United States","phone":"4085550100"},
+    {"first_name":"Robert","last_name":"Martinez","name":"Robert Martinez",
+     "address":"233 S Wacker Dr","city":"Chicago","state":"IL",
+     "zip":"60606","country":"US","country_name":"United States","phone":"3125550123"},
+    # UK addresses
+    {"first_name":"Oliver","last_name":"Smith","name":"Oliver Smith",
+     "address":"10 Downing Street","city":"London","state":"England",
+     "zip":"SW1A 2AA","country":"GB","country_name":"United Kingdom","phone":"02071234567"},
+    {"first_name":"Charlotte","last_name":"Jones","name":"Charlotte Jones",
+     "address":"221B Baker Street","city":"London","state":"England",
+     "zip":"NW1 6XE","country":"GB","country_name":"United Kingdom","phone":"02079461234"},
+    # Canada
+    {"first_name":"Liam","last_name":"Taylor","name":"Liam Taylor",
+     "address":"1 Sussex Drive","city":"Ottawa","state":"ON",
+     "zip":"K1M 1M4","country":"CA","country_name":"Canada","phone":"6135550100"},
+    {"first_name":"Emma","last_name":"Anderson","name":"Emma Anderson",
+     "address":"100 Queen St W","city":"Toronto","state":"ON",
+     "zip":"M5H 2N1","country":"CA","country_name":"Canada","phone":"4165550100"},
+    # Australia
+    {"first_name":"Noah","last_name":"Thomas","name":"Noah Thomas",
+     "address":"1 Martin Place","city":"Sydney","state":"NSW",
+     "zip":"2000","country":"AU","country_name":"Australia","phone":"0290001234"},
+    # Germany
+    {"first_name":"Leon","last_name":"Müller","name":"Leon Müller",
+     "address":"Unter den Linden 1","city":"Berlin","state":"Berlin",
+     "zip":"10117","country":"DE","country_name":"Germany","phone":"03020001234"},
+    # France
+    {"first_name":"Hugo","last_name":"Dupont","name":"Hugo Dupont",
+     "address":"5 Avenue Anatole France","city":"Paris","state":"Île-de-France",
+     "zip":"75007","country":"FR","country_name":"France","phone":"0140001234"},
+]
+
+def get_random_billing() -> Dict:
+    return random.choice(ADDRESS_POOL).copy()
+
+DEFAULT_BILLING = ADDRESS_POOL[0].copy()
+DEFAULT_BILLING["email"] = "test@gmail.com"
 
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
@@ -497,11 +536,13 @@ class BaseAutofill:
     MASKED_EXPIRY = "01/30"
     MASKED_CVV    = "123"
 
-    def __init__(self, page: Page, email: str = None, name: str = None):
-        self.page       = page
+    def __init__(self, page: Page, email: str = None, name: str = None,
+                 billing: Dict = None):
+        self.page     = page
         self.real_card: Optional[Dict] = None
-        self.email      = email or DEFAULT_BILLING["email"]
-        self.name_val   = name  or DEFAULT_BILLING["name"]
+        self.billing  = billing or get_random_billing()
+        self.email    = email or self.billing.get("email", "test@gmail.com")
+        self.name_val = name  or self.billing.get("name", "John Smith")
 
     async def find_and_fill_field(self, selectors: List[str], value: str) -> bool:
         """Try on main page first, then all child iframes."""
@@ -638,45 +679,103 @@ class BaseAutofill:
             pass
 
     async def fill_billing(self):
+        b = self.billing
         mapping = [
             (["#billing_first_name","input[name='billing_first_name']","input[name='firstName']",
               "input[placeholder*='First name']","input[placeholder*='First Name']"],
-             DEFAULT_BILLING["first_name"]),
+             b.get("first_name","John")),
             (["#billing_last_name","input[name='billing_last_name']","input[name='lastName']",
               "input[placeholder*='Last name']","input[placeholder*='Last Name']"],
-             DEFAULT_BILLING["last_name"]),
+             b.get("last_name","Smith")),
             (["#billing_address_1","input[name='billing_address_1']","input[name='address']",
               "input[name='address1']","input[placeholder*='Address']",
               "input[autocomplete='street-address']"],
-             DEFAULT_BILLING["address"]),
+             b.get("address","123 Main Street")),
             (["#billing_city","input[name='billing_city']","input[name='city']",
               "input[placeholder*='City']","input[autocomplete='address-level2']"],
-             DEFAULT_BILLING["city"]),
+             b.get("city","New York")),
             (["#billing_postcode","input[name='billing_postcode']","input[name='zip']",
-              "input[name='postal_code']","input[placeholder*='ZIP']",
+              "input[name='postal_code']","input[placeholder*='ZIP']","input[placeholder*='Postal']",
               "input[autocomplete='postal-code']"],
-             DEFAULT_BILLING["zip"]),
-            (["#billing_phone","input[name='billing_phone']","input[name='phone']",
-              "input[type='tel']"],
-             DEFAULT_BILLING["phone"]),
+             b.get("zip","10001")),
+            (["#billing_phone","input[name='billing_phone']","input[name='phone']","input[type='tel']"],
+             b.get("phone","2125551234")),
         ]
         for sels, val in mapping:
             await self.find_and_fill_field(sels, val)
+
+        country_code = b.get("country", "US")
+        country_name = b.get("country_name", "United States")
+
+        # 1. Native <select> dropdown (WooCommerce, BigCommerce, etc.)
         for sel in ["#billing_country","select[name='billing_country']",
-                    "select[name='country']","select[autocomplete='country']"]:
+                    "select[name='country']","select[autocomplete='country']",
+                    "select[id*='country']"]:
             try:
                 el = await self.page.query_selector(sel)
                 if el and await el.is_visible():
-                    await el.select_option(value="US")
+                    await el.select_option(value=country_code)
                     break
             except Exception:
                 pass
-        for sel in ["#billing_state","select[name='billing_state']","select[name='state']"]:
+
+        # 2. Stripe Link / Stripe Checkout React country combobox
+        # Stripe renders country as a custom <select> or a combobox inside its iframe
+        # Try to find it in all frames and set via JS property assignment
+        await self._set_stripe_country(country_code)
+
+        # 3. State/province native select
+        state_val = b.get("state", "NY")
+        for sel in ["#billing_state","select[name='billing_state']",
+                    "select[name='state']","select[id*='state']"]:
             try:
                 el = await self.page.query_selector(sel)
                 if el and await el.is_visible():
-                    await el.select_option(value="NY")
+                    try:
+                        await el.select_option(value=state_val)
+                    except Exception:
+                        await el.select_option(label=state_val)
                     break
+            except Exception:
+                pass
+
+    async def _set_stripe_country(self, country_code: str):
+        """Handle Stripe Checkout's React-rendered country/region dropdown."""
+        # Stripe's country selector is a <select> inside their iframe but
+        # the React controlled value needs a native input event to update.
+        js_set = f"""
+        (code) => {{
+            // Try every select that looks like country
+            const sels = document.querySelectorAll(
+                'select[name="country"], select[id*="country"], select[autocomplete="country"], select[aria-label*="ountry"]'
+            );
+            for (const s of sels) {{
+                const opt = [...s.options].find(o => o.value === code || o.value.startsWith(code));
+                if (opt) {{
+                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+                    nativeInputValueSetter.call(s, opt.value);
+                    s.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    s.dispatchEvent(new Event('input',  {{ bubbles: true }}));
+                    return true;
+                }}
+            }}
+            return false;
+        }}
+        """
+        try:
+            done = await self.page.evaluate(js_set, country_code)
+            if done:
+                return
+        except Exception:
+            pass
+        # Try same JS in every child frame (Stripe Elements frame)
+        for frame in self.page.frames:
+            if frame == self.page.main_frame:
+                continue
+            try:
+                done = await frame.evaluate(js_set, country_code)
+                if done:
+                    return
             except Exception:
                 pass
 
@@ -1101,9 +1200,9 @@ StepCallback = Callable[[str], Awaitable[None]]
 class HitterEngine:
     def __init__(self, proxy: Optional[str] = None,
                  email: str = None, name: str = None):
-        self.proxy     = proxy
-        self.email     = email or DEFAULT_BILLING["email"]
-        self.name_val  = name  or DEFAULT_BILLING["name"]
+        self.proxy    = proxy
+        self.email    = email   # None = use random billing email
+        self.name_val = name    # None = use random billing name
         self.results:  List[Dict] = []
         self.successes = 0
         self.fails     = 0
@@ -1159,8 +1258,23 @@ class HitterEngine:
                 provider = detect_provider(url, html)
                 await self._cb(step_cb, f"🔌 Provider: <b>{provider}</b>")
 
+                # pick a random billing profile for this hit
+                billing = get_random_billing()
+                if self.email:
+                    billing["email"] = self.email
+                if self.name_val:
+                    billing["name"]       = self.name_val
+                    parts = self.name_val.strip().split(None, 1)
+                    billing["first_name"] = parts[0]
+                    billing["last_name"]  = parts[1] if len(parts) > 1 else parts[0]
+
+                await self._cb(step_cb,
+                    f"🏠 Billing: <code>{billing['name']}</code> • "
+                    f"{billing['city']}, {billing['country_name']}")
+
                 af_cls = AUTOFILL_MAP.get(provider, GenericAutofill)
-                af     = af_cls(page, email=self.email, name=self.name_val)
+                af     = af_cls(page, email=billing.get("email"),
+                                name=billing.get("name"), billing=billing)
 
                 await af.handle_captcha()
                 await af.enable_card_replace(card)
@@ -1170,14 +1284,16 @@ class HitterEngine:
                 await af.fill_billing()
                 await self._cb(step_cb, "📋 Billing filled")
 
+                # Screenshot BEFORE submit — shows filled form state
+                ss_before = await take_screenshot(page, f"card_{attempt}_filled")
+
                 await self._cb(step_cb, "🖱 Clicking submit…")
                 submitted = await af.submit()
                 if not submitted:
-                    ss = await take_screenshot(page, f"fail_submit_{attempt}")
                     res.update({"decline_code": "submit_not_found",
                                 "error": "Submit button not found",
                                 "response_time": round(time.time()-t0, 2),
-                                "screenshot": ss})
+                                "screenshot": ss_before})
                     self.fails += 1
                     await self._cb(step_cb, "❌ Submit button not found")
                     await browser.close()
@@ -1195,8 +1311,11 @@ class HitterEngine:
                 await af.handle_captcha()
 
                 res["response_time"] = round(time.time()-t0, 2)
+                # Screenshot AFTER response — shows result/decline page
                 ss = await take_screenshot(page, f"card_{attempt}_result")
                 res["screenshot"] = ss
+                # keep pre-submit screenshot separately for debug
+                res["screenshot_before"] = ss_before
 
                 cur_url = page.url
                 body    = ""
@@ -1212,14 +1331,19 @@ class HitterEngine:
                     res["screenshot"] = ss2
                     self.successes += 1
                     await self._cb(step_cb, "✅ Payment successful!")
-                    # delete old screenshot
-                    if ss and ss != ss2:
-                        try: os.remove(ss)
-                        except Exception: pass
+                    # delete intermediate screenshots
+                    for old_ss in (ss, ss_before):
+                        if old_ss and old_ss != ss2:
+                            try: os.remove(old_ss)
+                            except Exception: pass
                 else:
                     res["decline_code"] = decline_code or "unknown"
                     self.fails += 1
                     await self._cb(step_cb, f"❌ Declined: {decline_code or 'unknown'}")
+                    # delete pre-submit screenshot (keep result screenshot)
+                    if ss_before and ss_before != ss:
+                        try: os.remove(ss_before)
+                        except Exception: pass
 
                 await browser.close()
 
