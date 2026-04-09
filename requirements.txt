@@ -1,0 +1,4 @@
+playwright
+python-telegram-bot>=21.0
+requests
+urllib3

