@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NACHT HITTER — Telegram Bot v3
+NACHT HITTER — Telegram Bot v4
 """
 
 import asyncio
@@ -43,6 +43,8 @@ def _default_cfg() -> Dict:
         "approved_users": [],
         "proxies":        [],
         "logger_chat_id": None,
+        "user_emails":    {},   # {str(user_id): email}
+        "user_names":     {},   # {str(user_id): name}
     }
 
 def load_cfg() -> Dict:
@@ -134,6 +136,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  Card format: <code>number|mm|yy|cvv</code>",
         "/stats — Hit statistics",
         "/help  — This message",
+    ]
+    lines += [
+        "/email &lt;your@email.com&gt; — Set your email for checkouts",
+        "/name  &lt;Full Name&gt;      — Set your name for checkouts",
     ]
     if is_admin(uid):
         lines += [
@@ -255,8 +261,13 @@ async def _hit_job(update: Update, context: ContextTypes.DEFAULT_TYPE,
     header += "\n\n⏳ Starting…"
     await _edit(context, chat_id, status_id, header)
 
+    # per-user email/name (fallback to defaults)
+    uid_str   = str(user.id)
+    hit_email = CFG.get("user_emails", {}).get(uid_str)
+    hit_name  = CFG.get("user_names",  {}).get(uid_str)
+
     # ── Hit Loop ──────────────────────────────────────────────────────────────
-    engine = HitterEngine(proxy=proxy)
+    engine = HitterEngine(proxy=proxy, email=hit_email, name=hit_name)
     rl     = RateLimiter()
     total  = min(len(cards), MAX_ATTEMPTS)
     result_lines: List[str] = []
@@ -565,6 +576,50 @@ async def cmd_setlogger(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Logger set to: <code>{lid}</code>", parse_mode=ParseMode.HTML)
 
+# ── /email ───────────────────────────────────────────────────────────────────
+async def cmd_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_approved(uid):
+        await update.message.reply_text("⛔ Access denied."); return
+    if not context.args:
+        current = CFG.get("user_emails", {}).get(str(uid), "test@gmail.com")
+        await update.message.reply_text(
+            f"📧 <b>Your email:</b> <code>{current}</code>\n\n"
+            f"To change: <code>/email your@email.com</code>",
+            parse_mode=ParseMode.HTML); return
+    email = context.args[0].strip()
+    if "@" not in email or "." not in email:
+        await update.message.reply_text("❌ Invalid email format."); return
+    if "user_emails" not in CFG:
+        CFG["user_emails"] = {}
+    CFG["user_emails"][str(uid)] = email
+    save_cfg(CFG)
+    await update.message.reply_text(
+        f"✅ Email set: <code>{email}</code>", parse_mode=ParseMode.HTML)
+
+
+# ── /name ─────────────────────────────────────────────────────────────────────
+async def cmd_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_approved(uid):
+        await update.message.reply_text("⛔ Access denied."); return
+    if not context.args:
+        current = CFG.get("user_names", {}).get(str(uid), "John Smith")
+        await update.message.reply_text(
+            f"👤 <b>Your name:</b> <code>{current}</code>\n\n"
+            f"To change: <code>/name John Smith</code>",
+            parse_mode=ParseMode.HTML); return
+    name = " ".join(context.args).strip()
+    if len(name) < 2:
+        await update.message.reply_text("❌ Name too short."); return
+    if "user_names" not in CFG:
+        CFG["user_names"] = {}
+    CFG["user_names"][str(uid)] = name
+    save_cfg(CFG)
+    await update.message.reply_text(
+        f"✅ Name set: <code>{name}</code>", parse_mode=ParseMode.HTML)
+
+
 # ── Unknown command ───────────────────────────────────────────────────────────
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == "private":
@@ -587,6 +642,8 @@ def main():
     app.add_handler(CommandHandler("help",        cmd_help))
     app.add_handler(CommandHandler("hit",         cmd_hit))
     app.add_handler(CommandHandler("stats",       cmd_stats))
+    app.add_handler(CommandHandler("email",       cmd_email))
+    app.add_handler(CommandHandler("name",        cmd_name))
     app.add_handler(CommandHandler("adduser",     cmd_adduser))
     app.add_handler(CommandHandler("removeuser",  cmd_removeuser))
     app.add_handler(CommandHandler("addproxy",    cmd_addproxy))
