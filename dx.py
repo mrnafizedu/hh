@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import queue
-import json, pygetwindow as gw, hashlib, platform, subprocess, os, base64, winreg
+import json, pygetwindow as gw, hashlib, platform, subprocess, os, base64
 
 class IXStoryViewTool:
     def __init__(self, root):
@@ -40,6 +40,7 @@ class IXStoryViewTool:
         self.is_running = False
         self.log_queue = queue.Queue()
         self.total_clicks = 0
+        self._auto_arrange_timer = None
         
         # Direct UI setup without license check
         self.setup_ui()
@@ -386,6 +387,19 @@ class IXStoryViewTool:
                 else:
                     self.log_message(f'❌ Failed to open Profile {profile_num}')
             
+            cycle_delay_minutes = self.cycle_delay.get()
+            if self.is_running and cycle_delay_minutes > 0:
+                delay_seconds = cycle_delay_minutes * 60
+                self.log_message(f'⏰ Cycle delay: waiting {cycle_delay_minutes} minute(s) before next cycle...')
+                elapsed = 0
+                while elapsed < delay_seconds and self.is_running:
+                    time.sleep(1)
+                    elapsed += 1
+                if self.is_running:
+                    self.log_message('🔁 Restarting automation cycle...')
+                    self.run_automation()
+                    return
+
             self.is_running = False
             self.start_button.config(state='normal')
             self.stop_button.config(state='disabled')
@@ -717,12 +731,41 @@ class IXStoryViewTool:
         except Exception as e:
             self.log_message(f'❌ Smart resize tiled arrangement failed: {str(e)}')
 
+    def _parse_interval_seconds(self):
+        """Convert auto-arrange interval string to seconds"""
+        interval_str = self.auto_arrange_interval.get()
+        try:
+            parts = interval_str.split()
+            value = int(parts[0])
+            unit = parts[1] if len(parts) > 1 else 'seconds'
+            if 'minute' in unit:
+                return value * 60
+            return value
+        except Exception:
+            return 60
+
+    def _schedule_auto_arrange(self):
+        """Schedule next auto-arrange run if still enabled"""
+        if not self.auto_arrange_enabled.get():
+            return
+        self.auto_arrange_windows()
+        interval_ms = self._parse_interval_seconds() * 1000
+        self._auto_arrange_timer = self.root.after(interval_ms, self._schedule_auto_arrange)
+
     def toggle_auto_arrange(self):
         """Auto arrange checkbox toggle karta hai"""
         if self.auto_arrange_enabled.get():
             self.log_message('🔄 Auto Arrange enabled!')
+            if self._auto_arrange_timer is not None:
+                self.root.after_cancel(self._auto_arrange_timer)
+                self._auto_arrange_timer = None
+            interval_ms = self._parse_interval_seconds() * 1000
+            self._auto_arrange_timer = self.root.after(interval_ms, self._schedule_auto_arrange)
         else:
             self.log_message('⏹️ Auto Arrange disabled!')
+            if self._auto_arrange_timer is not None:
+                self.root.after_cancel(self._auto_arrange_timer)
+                self._auto_arrange_timer = None
 
 if __name__ == '__main__':
     root = tk.Tk()
